@@ -1,0 +1,22 @@
+name:                pure-elm
+version:             0.7.0.0
+synopsis:            An implementation of the Elm architecture for Pure.
+-- description:
+homepage:            github.com/grumply/pure-elm
+license:             BSD3
+license-file:        LICENSE
+author:              Sean Mackenzie
+maintainer:          sean@grump.ly
+-- copyright:
+category:            Web
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+cabal-version:       >=1.10
+
+library
+  exposed-modules: Pure.Elm
+  build-depends:       base >=4.11 && <4.12,
+                       pure >=0.7 && <1,
+                       pure-router >=0.7 && <1
+  hs-source-dirs:      src
+  default-language:    Haskell2010
