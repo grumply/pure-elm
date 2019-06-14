@@ -15,15 +15,15 @@ type Elm msg = (?command :: msg -> IO ())
 command :: Elm msg => msg -> IO ()
 command msg = ?command msg
 
-data App st msg = App st (st -> msg -> IO st) (Elm msg => st -> View)
+data App st msg = App st (msg -> st -> IO st) (Elm msg => st -> View)
 
 run :: (Typeable st, Typeable msg) => App st msg -> View
 run (App model update view) = 
   flip Component () $ \self ->
     let
-      ?command = fix $ \f -> \msg -> modifyM_ self $ \_ st -> do
-                     st' <- let ?command = f in update st msg
-                     pure (st',pure ())  
+      ?command = fix $ \f -> \msg -> modifyM_ self $ \_ mdl -> do
+                     mdl' <- let ?command = f in update msg mdl
+                     pure (mdl',pure ())
     in      
       def { construct = return model
           , render    = \_ -> view
@@ -47,7 +47,7 @@ routed (Routed rtr (App model update view)) = flip Component () $ \self ->
             [ Component (\self ->
               let
                 ?command = fix $ \f -> \msg -> modifyM_ self $ \_ mdl -> do
-                               mdl' <- let ?command = f in update mdl msg
+                               mdl' <- let ?command = f in update msg mdl
                                pure (mdl',pure ())  
               in      
                 def { construct = return model
