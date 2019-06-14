@@ -1,24 +1,34 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards #-}
-module Pure.Elm (Elm,command,App(..),run,Routed(..),routed,module Export) where
+module Pure.Elm (Run(..),Elm,command,embed,App(..),Routed(..),module Export) where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view)
-import Pure.Router as Export hiding (router)
+import Pure.Router as Export hiding (router,route)
+import qualified Pure.Router as Router
 
 import Control.Monad
 import Control.Monad.IO.Class as Export
 import Data.Function
 import Data.Typeable
 
+class Run a where
+  run :: a -> View
+
 type Elm msg = (?command :: msg -> IO ())
 
 command :: Elm msg => msg -> IO ()
 command msg = ?command msg
 
-data App st msg = App st (msg -> st -> IO st) (Elm msg => st -> View)
+embed :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
+embed f a = 
+  let g = ?command
+   in let ?command = g . f
+       in a
 
-run :: (Typeable st, Typeable msg) => App st msg -> View
-run (App model update view) = 
+data App st msg = App (Elm msg => IO ()) (Elm msg => st) (Elm msg => msg -> st -> IO st) (Elm msg => st -> View)
+
+runApp :: (Typeable st, Typeable msg) => App st msg -> View
+runApp (App startup model update view) = 
   flip Component () $ \self ->
     let
       ?command = fix $ \f -> \msg -> modifyM_ self $ \_ mdl -> do
@@ -26,18 +36,22 @@ run (App model update view) =
                      pure (mdl',pure ())
     in      
       def { construct = return model
+          , executing = startup
           , render    = \_ -> view
           }
 
 instance (Typeable st, Typeable msg) => Pure (App st msg) where
-  view = run
+  view = runApp
+
+instance (Typeable st, Typeable msg) => Run (App st msg) where
+  run = runApp
 
 data Routed st msg = Routed (Routing msg ()) (App st msg)
 
-routed :: (Typeable st, Typeable msg) => Routed st msg -> View
-routed (Routed rtr (App model update view)) = flip Component () $ \self ->
+runRouted :: (Typeable st, Typeable msg) => Routed st msg -> View
+runRouted (Routed rtr (App startup model update view)) = flip Component () $ \self ->
   let 
-    router = fmap Just . route rtr
+    router = fmap Just . Router.route rtr
     go mm = modify_ self $ \_ _ -> mm
   in
     def { construct = return Nothing 
@@ -51,6 +65,7 @@ routed (Routed rtr (App model update view)) = flip Component () $ \self ->
                                pure (mdl',pure ())  
               in      
                 def { construct = return model
+                    , executing = startup
                     , receive   = \mmsg mdl -> 
                       case mmsg of
                         Nothing  -> pure mdl
@@ -62,4 +77,7 @@ routed (Routed rtr (App model update view)) = flip Component () $ \self ->
         }
 
 instance (Typeable st, Typeable msg) => Pure (Routed st msg) where
-  view = routed
+  view = runRouted
+
+instance (Typeable st, Typeable msg) => Run (Routed st msg) where
+  run = runRouted
