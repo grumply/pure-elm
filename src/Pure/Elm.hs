@@ -33,7 +33,9 @@ run App {..} env =
                      mdl' <- let ?command = f in _update msg env mdl
                      pure (mdl',pure ())
     in      
-      def { construct = pure _model 
+      def { construct = do
+            (_,env) <- ask self
+            _update (_receive env) env _model
           , receive   = \(_,env) -> _update (_receive env) env
           , render    = \(_,env) -> _view env
           }
