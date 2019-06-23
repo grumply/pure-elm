@@ -21,17 +21,19 @@ data App st msg = App
   }
 
 -- | Turn an `App st msg` into a component with `msg` property.
-run :: (Typeable st, Typeable msg) => App st msg -> (msg -> View)
-run App {..} =
-  Component $ \self ->
+run :: (Typeable st, Typeable msg) => App st msg -> msg -> View
+run app msg =
+  flip Component (app,msg) $ \self ->
     let
-      ?command = fix $ \f -> \msg -> modifyM_ self $ \_ mdl -> do
-                     mdl' <- let ?command = f in _update msg mdl
+      ?command = fix $ \f -> \msg -> modifyM_ self $ \(app,_) mdl -> do
+                     mdl' <- let ?command = f in _update app msg mdl
                      pure (mdl',pure ())
     in      
-      def { construct = return _model
-          , receive   = _update
-          , render    = \_ -> _view
+      def { construct = do
+            (app,msg) <- ask self
+            (_update app) msg (_model app)
+          , receive   = \(app,msg) -> _update app msg
+          , render    = \(app,_) -> _view app
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
