@@ -38,29 +38,33 @@ subscribeWith f = mdo
 subscribe :: (Typeable msg, Elm msg) => IO ()
 subscribe = void $ subscribeWith ?command
 
-subscribe' :: (Typeable msg, Elm msg) => Proxy msg -> IO ()
-subscribe' _ = void $ subscribeWith ?command
+subscribe' :: (Typeable msg, Elm msg) => IO Unique
+subscribe' = subscribeWith ?command
 
-publish :: forall msg. Typeable msg => msg -> IO ()
-publish msg = do
+publish :: Typeable msg => msg -> IO ()
+publish = void . publish'
+
+publish' :: forall msg. Typeable msg => msg -> IO Bool
+publish' msg = do
   let 
     any = unsafeCoerce msg
     tr = typeOf (undefined :: msg)
   b <- readIORef broker
   case Map.lookup tr b of
-    Nothing -> pure ()
+    Nothing -> pure False
     Just mv -> do
       hs <- takeMVar mv
       hs' <- fmap catMaybes $ for hs $ \(u,h) -> do
         b <- h any
         pure $ if b then Just (u,h) else Nothing
       putMVar mv hs'
+      pure True
 
 unsubscribe :: forall msg. (Typeable msg, Elm msg) => Unique -> IO ()
-unsubscribe = unsubscribe' (Proxy :: Proxy msg)
+unsubscribe = unsubscribeWith (Proxy :: Proxy msg)
 
-unsubscribe' :: forall msg. Typeable msg => Proxy msg -> Unique -> IO ()
-unsubscribe' _ u = do
+unsubscribeWith :: forall msg. Typeable msg => Proxy msg -> Unique -> IO ()
+unsubscribeWith _ u = do
   let tr = typeOf (undefined :: msg)
   b <- readIORef broker
   case Map.lookup tr b of
