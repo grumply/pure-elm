@@ -2,8 +2,8 @@
    ScopedTypeVariables #-}
 module Pure.Elm (Elm,App(..),run,command,map,module Export) where
 
-import Pure as Export hiding (Home,update,view,receive)
-import qualified Pure (view,receive)
+import Pure as Export hiding (Home,update,view)
+import qualified Pure (view)
 
 import Control.Monad
 import Control.Monad.IO.Class as Export
@@ -16,19 +16,15 @@ import Prelude hiding (map)
 type Elm msg = (?command :: msg -> IO ())
 
 data App env st msg = App 
-  { receive  :: Maybe (env -> msg)
-  , shutdown :: Maybe msg
-  , model    :: Elm msg => st
-  , update   :: Elm msg => msg -> env -> st -> IO st 
-  , view     :: Elm msg => env -> st -> View
+  { _receive  :: Maybe (env -> msg)
+  , _shutdown :: Maybe msg
+  , _model    :: Elm msg => st
+  , _update   :: Elm msg => msg -> env -> st -> IO st 
+  , _view     :: Elm msg => env -> st -> View
   }
 
 instance Default (App env st msg) where
-  def = App Nothing Nothing model update view
-    where
-      model = error "No default model."
-      update _ _ st = pure st
-      view _ _ = Null
+  def = App Nothing Nothing (error "No default model supplied.") (\_ _ -> pure) (\_ _ -> Null)
 
 -- | Turn an `App st msg` into a component with `msg` property.
 run :: forall env st msg. (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
@@ -38,18 +34,18 @@ run App {..} env =
   flip Component (Proxy :: Proxy (st,env,msg),env) $ \self ->
     let
       ?command = fix $ \f -> \msg -> modifyM_ self $ \(_,env) mdl -> do
-                     mdl' <- let ?command = f in update msg env mdl
+                     mdl' <- let ?command = f in _update msg env mdl
                      pure (mdl',pure ())
     in      
       def { construct = do
             (_,env) <- ask self
-            maybe (pure model) (\rcv -> update (rcv env) env model) receive
-          , Pure.receive = \(_,env) -> maybe pure (\rcv -> update (rcv env) env) receive
+            maybe (pure _model) (\rcv -> _update (rcv env) env _model) _receive
+          , receive = \(_,env) -> maybe pure (\rcv -> _update (rcv env) env) _receive
           , unmounted = do
             (_,env) <- ask self
             mdl     <- get self
-            maybe (pure ()) (\msg -> void $ update msg env mdl) shutdown
-          , render    = \(_,env) -> view env
+            maybe (pure ()) (\msg -> void $ _update msg env mdl) _shutdown
+          , render    = \(_,env) -> _view env
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
