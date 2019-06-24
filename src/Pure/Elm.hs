@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables #-}
-module Pure.Elm (Elm,App(..),run,command,map,module Export) where
+module Pure.Elm (App(..),run,command,map,module Export) where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view)
@@ -12,8 +12,7 @@ import Data.Typeable
 
 import Prelude hiding (map)
 
--- | An implicit constraint to propagate an elm context.
-type Elm msg = (?command :: msg -> IO ())
+import Pure.Elm.Subscriptions as Export
 
 data App env st msg = App 
   { _receive  :: Maybe (env -> msg)
@@ -33,7 +32,7 @@ run App {..} env =
   -- improve correctness of diffing.
   flip Component (Proxy :: Proxy (st,env,msg),env) $ \self ->
     let
-      ?command = fix $ \f -> \msg -> modifyM_ self $ \(_,env) mdl -> do
+      ?command = fix $ \f -> \msg -> modifyM self $ \(_,env) mdl -> do
                      mdl' <- let ?command = f in _update msg env mdl
                      pure (mdl',pure ())
     in      
@@ -50,7 +49,7 @@ run App {..} env =
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
 command :: Elm msg => msg -> IO ()
-command msg = ?command msg
+command msg = void $ ?command msg
 
 -- | Map over an `Elm` constraint.
 map :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
