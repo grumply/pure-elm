@@ -15,15 +15,24 @@ import Prelude hiding (map)
 import Pure.Elm.Subscriptions as Export
 
 data App env st msg = App 
-  { _receive  :: Maybe (env -> msg)
+  { _startup  :: Maybe msg
+  , _receive  :: Maybe (env -> msg)
   , _shutdown :: Maybe msg
-  , _model    :: Elm msg => st
+  , _model    :: st
   , _update   :: Elm msg => msg -> env -> st -> IO st 
   , _view     :: Elm msg => env -> st -> View
   }
 
-instance Default (App env st msg) where
-  def = App Nothing Nothing (error "No default model supplied.") (\_ _ -> pure) (\_ _ -> Null)
+instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) where
+  def = 
+    let 
+      tr = typeOf (undefined :: App env st msg) 
+      tm = typeOf (undefined :: st)
+     in
+      App Nothing Nothing Nothing 
+        (error $ "Pure.Elm.def: No default model supplied to " ++ show tr ++ " of type " ++ show tm) 
+        (\_ _ -> pure) 
+        (\_ _ -> Null)
 
 -- | Turn an `App st msg` into a component with `msg` property.
 run :: forall env st msg. (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
@@ -37,8 +46,9 @@ run App {..} env =
                      pure (mdl',pure ())
     in      
       def { construct = do
+            mdl <- maybe (pure _model) (\str -> _update str env _model) _startup
             (_,env) <- ask self
-            maybe (pure _model) (\rcv -> _update (rcv env) env _model) _receive
+            maybe (pure mdl) (\rcv -> _update (rcv env) env mdl) _receive
           , receive = \(_,env) -> maybe pure (\rcv -> _update (rcv env) env) _receive
           , unmounted = do
             (_,env) <- ask self
