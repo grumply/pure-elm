@@ -47,6 +47,9 @@ unsafeSubscribeWith f = mdo
         pure (pure ())
   pure u
 
+subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO ()
+subscribeWith f = void $ unsafeSubscribeWith (?command . f)
+
 subscribe :: (Typeable msg, Elm msg) => IO ()
 subscribe = void $ unsafeSubscribeWith ?command
 
