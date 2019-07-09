@@ -1,10 +1,11 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables #-}
-module Pure.Elm (App(..),run,command,map,module Export) where
+module Pure.Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view)
 
+import Control.Concurrent (myThreadId,ThreadId)
 import Control.Monad
 import Control.Monad.IO.Class as Export
 import Data.Function
@@ -12,7 +13,8 @@ import Data.Typeable
 
 import Prelude hiding (map)
 
-import Pure.Elm.Subscriptions as Export
+import Pure.Elm.Sub as Export
+import qualified Pure.Elm.Memo as Memo
 
 data App env st msg = App 
   { _startup  :: Maybe msg
@@ -54,6 +56,7 @@ run App {..} env =
             (_,env) <- ask self
             mdl     <- get self
             maybe (pure ()) (\msg -> void $ _update msg env mdl) _shutdown
+            myThreadId >>= Memo.cleanLedger
           , render    = \(_,env) -> _view env
           }
 
@@ -68,4 +71,15 @@ map f a =
    in let ?command = g . f
        in a
 
+memo :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()
+memo msg f a = void (memo' msg f a)
+
+memo' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO (Maybe ThreadId)
+memo' msg f a = Memo.memo' True f (command . msg) a
+
+omem :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO ()
+omem msg a f = memo msg f a
+
+omem' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO (Maybe ThreadId)
+omem' msg a f = memo' msg f a
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes, RecursiveDo, ScopedTypeVariables,
    ImplicitParams, ConstraintKinds, TypeApplications #-}
-module Pure.Elm.Subscriptions where
+module Pure.Elm.Sub where
 
 import Control.Concurrent.STM
 import Control.Monad
@@ -82,13 +82,13 @@ publish' msg = do
           let dead = fmap fst hs \\ fmap fst hs'
           case hs' of
             [] -> do
-              cleanup @msg dead
+              cleanBroker @msg dead
               publish' msg
             _  -> 
               pure True
 
-cleanup :: forall msg. Typeable msg => [Unique] -> IO ()
-cleanup us = do
+cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
+cleanBroker us = do
   let tr = typeOf (undefined :: msg)
   atomically $ do 
     b <- takeTMVar broker
@@ -99,8 +99,8 @@ cleanup us = do
       _ -> putTMVar broker b
 
 unsubscribe :: forall msg. (Typeable msg, Elm msg) => Unique -> IO ()
-unsubscribe u = cleanup @msg [u] 
+unsubscribe u = cleanBroker @msg [u] 
 
 unsubscribeWith :: forall msg. Typeable msg => Proxy msg -> Unique -> IO ()
-unsubscribeWith _ u = cleanup @msg [u] 
+unsubscribeWith _ u = cleanBroker @msg [u] 
 

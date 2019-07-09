@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   exposed-modules: Pure.Elm
-                   Pure.Elm.Subscriptions
+                   Pure.Elm.Memo
+                   Pure.Elm.Sub
   build-depends:       base >=4.11 && <4.12,
                        pure >=0.7 && <1,
                        containers,
