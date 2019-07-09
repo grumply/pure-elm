@@ -15,8 +15,8 @@ data Tracked = forall a b. (Typeable a, Typeable b) => Tracked (StableName a) (W
 ledger :: MVar (Map ThreadId (MVar (Map TypeRep Tracked)))
 ledger = unsafePerformIO (newMVar Map.empty)
 
-memo' :: forall a b c. (Typeable a,Typeable b) => Bool -> (a -> IO b) -> (b -> IO ()) -> (a -> IO (Maybe ThreadId))
-memo' warn f with a = do
+memo' :: forall a b c. (Typeable a,Typeable b) => (a -> IO b) -> (b -> IO ()) -> (a -> IO (Maybe ThreadId))
+memo' f with a = do
   tid <- myThreadId
   sna <- makeStableName a
   let 

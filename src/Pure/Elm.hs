@@ -75,7 +75,7 @@ memo :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> I
 memo msg f a = void (memo' msg f a)
 
 memo' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO (Maybe ThreadId)
-memo' msg f a = Memo.memo' True f (command . msg) a
+memo' msg f a = Memo.memo' f (command . msg) a
 
 omem :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO ()
 omem msg a f = memo msg f a
