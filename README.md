@@ -62,7 +62,7 @@ data App env st msg = App
 The core API:
 
 ```haskell
-Pure.Elm.run :: (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
+Pure.Elm.run :: App env st msg -> env -> View
 Pure.Elm.command :: Elm msg => msg -> IO ()
 Pure.Elm.map :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
 ```
@@ -72,9 +72,9 @@ Pure.Elm.map :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
 The subscription API:
 
 ```haskell
-Pure.Elm.subscribe :: (Typeable msg, Elm msg) => IO ()
-Pure.Elm.subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO ()
-Pure.Elm.publish :: Typeable msg => msg -> IO ()
+Pure.Elm.subscribe :: Elm msg => IO ()
+Pure.Elm.subscribeWith :: Elm msg => (msg' -> msg) -> IO ()
+Pure.Elm.publish :: msg -> IO ()
 ```
 
 Note that `unsubscribe` is unnecessary, in general, but exists if required and must be paired with `subscribe'` rather than `subscribe`.
@@ -84,5 +84,5 @@ Note that `unsubscribe` is unnecessary, in general, but exists if required and m
 The memoization API:
 
 ```haskell
-Pure.Elm.memo :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()
+Pure.Elm.memo :: (b -> msg) -> (a -> IO b) -> a -> IO ()
 ```
