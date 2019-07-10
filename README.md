@@ -84,5 +84,5 @@ Note that `unsubscribe` is unnecessary, in general, but exists if required and m
 The memoization API:
 
 ```haskell
-Pure.Elm.memo :: (b -> msg) -> (a -> IO b) -> a -> IO ()
+Pure.Elm.memo :: Elm msg => (b -> msg) -> (a -> IO b) -> a -> IO ()
 ```
