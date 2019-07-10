@@ -75,9 +75,9 @@ The subscription API:
 Pure.Elm.subscribe :: (Typeable msg, Elm msg) => IO ()
 Pure.Elm.subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO ()
 Pure.Elm.publish :: Typeable msg => msg -> IO ()
-Pure.Elm.unsubscribe :: forall msg. (Typeable msg, Elm msg) => Unique -> IO ()
-Pure.Elm.unsubscribeWith :: Typeable msg => Proxy msg -> Unique -> IO ()
 ```
+
+Note that `unsubscribe` is unnecessary, in general, but exists if required and must be paired with `subscribe'` rather than `subscribe`.
 
 ## Memoization
 
