@@ -17,9 +17,9 @@ import Pure.Elm.Sub as Export
 import qualified Pure.Elm.Memo as Memo
 
 data App env st msg = App 
-  { _startup  :: Maybe msg
-  , _receive  :: Maybe (env -> msg)
-  , _shutdown :: Maybe msg
+  { _startup  :: [msg]
+  , _receive  :: [env -> msg]
+  , _shutdown :: [msg]
   , _model    :: st
   , _update   :: Elm msg => msg -> env -> st -> IO st 
   , _view     :: Elm msg => env -> st -> View
@@ -31,7 +31,7 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
       tr = typeOf (undefined :: App env st msg) 
       tm = typeOf (undefined :: st)
      in
-      App Nothing Nothing Nothing 
+      App [] [] [] 
         (error $ "Pure.Elm.def: No default model supplied to " ++ show tr ++ " of type " ++ show tm) 
         (\_ _ -> pure) 
         (\_ _ -> Null)
@@ -48,14 +48,15 @@ run App {..} env =
                      pure (mdl',pure ())
     in      
       def { construct = do
-            mdl <- maybe (pure _model) (\str -> _update str env _model) _startup
+            mdl <- foldM (\st msg -> _update msg env st) _model _startup
             (_,env) <- ask self
-            maybe (pure mdl) (\rcv -> _update (rcv env) env mdl) _receive
-          , receive = \(_,env) -> maybe pure (\rcv -> _update (rcv env) env) _receive
+            foldM (\st msg -> _update msg env st) mdl (fmap ($ env) _receive)
+          , receive = \(_,env) mdl -> 
+            foldM (\st msg -> _update msg env st) mdl (fmap ($ env) _receive)
           , unmounted = do
             (_,env) <- ask self
             mdl     <- get self
-            maybe (pure ()) (\msg -> void $ _update msg env mdl) _shutdown
+            foldM_ (\st msg -> _update msg env st) mdl _shutdown
             myThreadId >>= Memo.cleanLedger
           , render    = \(_,env) -> _view env
           }
