@@ -1,5 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes, RecursiveDo, ScopedTypeVariables,
-   ImplicitParams, ConstraintKinds, TypeApplications #-}
+   ImplicitParams, ConstraintKinds, TypeApplications, RankNTypes #-}
 module Pure.Elm.Sub where
 
 import Control.Concurrent.STM
@@ -86,6 +86,9 @@ publish' msg = do
               publish' msg
             _  -> 
               pure True
+
+publishing :: (Typeable msg) => (Elm msg => a) -> a
+publishing a = let ?command = publish' in a
 
 cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
 cleanBroker us = do

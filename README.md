@@ -75,6 +75,7 @@ The subscription API:
 Pure.Elm.subscribe :: Elm msg => IO ()
 Pure.Elm.subscribeWith :: Elm msg => (msg' -> msg) -> IO ()
 Pure.Elm.publish :: msg -> IO ()
+Pure.Elm.publishing :: (Elm msg => a) -> a
 ```
 
 Note that `unsubscribe` is unnecessary, in general, but exists if required and must be paired with `subscribe'` rather than `subscribe`.
