@@ -18,7 +18,7 @@ import qualified Pure.Elm.Memo as Memo
 
 data App env st msg = App 
   { _startup  :: [msg]
-  , _receive  :: [env -> msg]
+  , _receive  :: [msg]
   , _shutdown :: [msg]
   , _model    :: st
   , _update   :: Elm msg => msg -> env -> st -> IO st 
@@ -47,12 +47,13 @@ run App {..} env =
                      mdl' <- let ?command = f in _update msg env mdl
                      pure (mdl',pure ())
     in      
-      def { construct = do
-            mdl <- foldM (\st msg -> _update msg env st) _model _startup
+      def { construct = pure _model
+          , executing = \mdl0 -> do
+            mdl <- foldM (\st msg -> _update msg env st) mdl0 _startup
             (_,env) <- ask self
-            foldM (\st msg -> _update msg env st) mdl (fmap ($ env) _receive)
+            foldM (\st msg -> _update msg env st) mdl _receive
           , receive = \(_,env) mdl -> 
-            foldM (\st msg -> _update msg env st) mdl (fmap ($ env) _receive)
+            foldM (\st msg -> _update msg env st) mdl _receive
           , unmounted = do
             (_,env) <- ask self
             mdl     <- get self
