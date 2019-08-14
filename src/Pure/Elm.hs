@@ -16,6 +16,8 @@ import Prelude hiding (map)
 import Pure.Elm.Sub as Export
 import qualified Pure.Elm.Memo as Memo
 
+import Data.Coerce
+
 data App env st msg = App 
   { _startup  :: [msg]
   , _receive  :: [msg]
