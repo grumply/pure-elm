@@ -1,9 +1,9 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
-   ScopedTypeVariables #-}
-module Pure.Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
+   ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash #-}
+module Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
 
 import Pure as Export hiding (Home,update,view)
-import qualified Pure (view)
+import qualified Pure (view,update)
 
 import Control.Concurrent (myThreadId,ThreadId)
 import Control.Monad
@@ -21,7 +21,7 @@ data App env st msg = App
   , _receive  :: [msg]
   , _shutdown :: [msg]
   , _model    :: st
-  , _update   :: Elm msg => msg -> env -> st -> IO st 
+  , _update   :: Elm msg => msg -> env -> st -> IO st
   , _view     :: Elm msg => env -> st -> View
   }
 
@@ -36,29 +36,51 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
         (\_ _ -> pure) 
         (\_ _ -> Null)
 
+newtype ElmEnv msg env = Env env
+
 -- | Turn an `App st msg` into a component with `msg` property.
 run :: forall env st msg. (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
-run App {..} env =
-  -- the Proxy tags this Component with the App type to
-  -- improve correctness of diffing.
-  flip Component (Proxy :: Proxy (st,env,msg),env) $ \self ->
-    let
-      ?command = fix $ \f -> \msg -> modifyM self $ \(_,env) mdl -> do
-                     mdl' <- let ?command = f in _update msg env mdl
-                     pure (mdl',pure ())
-    in      
-      def { construct = pure _model
-          , executing = \mdl0 -> do
-            (_,env) <- ask self
-            foldM (\st msg -> _update msg env st) mdl0 _startup
-          , receive = \(_,env) mdl -> 
-            foldM (\st msg -> _update msg env st) mdl _receive
+run App {..} = Component app . (Env @msg)
+  where
+    app self =
+      let
+        ?command = 
+          let 
+            {-# NOINLINE go' #-}
+            go' = go
+
+            {-# INLINE go #-}
+            go msg = modifyM self $ \env mdl -> do
+                mdl' <- let ?command = go' in _update msg (coerce env) mdl
+                pure (mdl',pure ())
+
+           in go
+      in let
+        {-# INLINE update #-}
+        update env = go
+          where
+            {-# NOINLINE go' #-}
+            go' = go
+            {-# INLINE go #-}
+            go mdl [] = pure mdl
+            go mdl (msg:msgs) = do
+              mdl' <- _update msg env mdl
+              go' mdl' msgs
+      in 
+        def 
+          { construct = pure _model
+          , executing = \mdl -> do
+            env <- ask self
+            update (coerce env) mdl _startup
+          , receive = \env mdl -> do
+            env_ <- ask self
+            update (coerce env_) mdl _receive
           , unmounted = do
-            (_,env) <- ask self
-            mdl     <- get self
-            foldM_ (\st msg -> _update msg env st) mdl _shutdown
+            env <- ask self
+            mdl <- get self
+            update (coerce env) mdl _shutdown
             myThreadId >>= Memo.cleanLedger
-          , render    = \(_,env) -> _view env
+          , render = _view . coerce
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
