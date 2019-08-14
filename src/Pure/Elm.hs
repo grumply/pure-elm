@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash #-}
-module Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
+module Pure.Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view,update)
