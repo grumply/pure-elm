@@ -23,8 +23,8 @@ data App env st msg = App
   , _receive  :: [msg]
   , _shutdown :: [msg]
   , _model    :: st
-  , _update   :: Elm msg => msg -> env -> st -> IO st
-  , _view     :: Elm msg => env -> st -> View
+  , _update   :: !(Elm msg => msg -> env -> st -> IO st)
+  , _view     :: !(Elm msg => env -> st -> View)
   }
 
 instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) where
@@ -41,22 +41,19 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
 newtype ElmEnv msg env = Env env
 
 -- | Turn an `App st msg` into a component with `msg` property.
+{-# INLINE run #-}
 run :: forall env st msg. (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
 run App {..} = Component app . (Env @msg)
   where
     app self =
       let
-        ?command = 
-          let 
-            {-# NOINLINE go' #-}
-            go' = go
+        {-# INLINE upd #-}
+        upd msg = modifyM self $ \env mdl -> do
+            mdl' <- let ?command = upd in _update msg (coerce env) mdl
+            pure (mdl',pure ())
 
-            {-# INLINE go #-}
-            go msg = modifyM self $ \env mdl -> do
-                mdl' <- let ?command = go' in _update msg (coerce env) mdl
-                pure (mdl',pure ())
-
-           in go
+      in let 
+        ?command = upd
       in let
         {-# INLINE update #-}
         update env = go
@@ -86,25 +83,31 @@ run App {..} = Component app . (Env @msg)
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
+{-# INLINE command #-}
 command :: Elm msg => msg -> IO ()
 command msg = void $ ?command msg
 
 -- | Map over an `Elm` constraint.
+{-# INLINE map #-}
 map :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
 map f a = 
   let g = ?command
    in let ?command = g . f
        in a
 
+{-# INLINE memo #-}
 memo :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()
 memo msg f a = void (memo' msg f a)
 
+{-# INLINE memo' #-}
 memo' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO (Maybe ThreadId)
 memo' msg f a = Memo.memo' f (command . msg) a
 
+{-# INLINE omem #-}
 omem :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO ()
 omem msg a f = memo msg f a
 
+{-# INLINE omem' #-}
 omem' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO (Maybe ThreadId)
 omem' msg a f = memo' msg f a
 
