@@ -33,7 +33,7 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
       tr = typeOf (undefined :: App env st msg) 
       tm = typeOf (undefined :: st)
      in
-      App [] [] [] 
+      App [] [] []
         (error $ "Pure.Elm.def: No default model supplied to " ++ show tr ++ " of type " ++ show tm) 
         (\_ _ -> pure) 
         (\_ _ -> Null)
@@ -71,9 +71,8 @@ run App {..} = Component app . (Env @msg)
           , executing = \mdl -> do
             env <- ask self
             update (coerce env) mdl _startup
-          , receive = \env mdl -> do
-            env_ <- ask self
-            update (coerce env_) mdl _receive
+          , receive = \env mdl ->
+            update (coerce env) mdl _receive
           , unmounted = do
             env <- ask self
             mdl <- get self
