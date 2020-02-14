@@ -1,7 +1,7 @@
 { mkDerivation, base, containers, stm, pure, stdenv }:
 mkDerivation {
   pname = "pure-elm";
-  version = "0.7.0.0";
+  version = "0.8.0.0";
   src = ./.;
   libraryHaskellDepends = [ base pure containers stm ];
   homepage = "github.com/grumply/pure-elm";

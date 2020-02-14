@@ -1,24 +1,26 @@
 name:                pure-elm
-version:             0.7.0.0
+version:             0.8.0.0
 synopsis:            An implementation of the Elm architecture for Pure.
--- description:
-homepage:            github.com/grumply/pure-elm
+homepage:            purehs.org/doc/pure-elm
 license:             BSD3
 license-file:        LICENSE
-author:              Sean Mackenzie
-maintainer:          sean@grump.ly
--- copyright:
+author:              Sean Hickman
+maintainer:          sean@grumply.com
 category:            Web
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
 cabal-version:       >=1.10
 
+source-repository head
+  type: git
+  location: https://github.com/grumply/pure-elm.git
+
 library
   exposed-modules: Pure.Elm
                    Pure.Elm.Memo
                    Pure.Elm.Sub
-  build-depends:       base >=4.11 && <4.12,
-                       pure >=0.7 && <1,
+  build-depends:       base,
+                       pure,
                        containers,
                        stm
   hs-source-dirs:      src
