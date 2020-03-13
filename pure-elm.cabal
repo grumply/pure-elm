@@ -17,10 +17,12 @@ source-repository head
 
 library
   exposed-modules: Pure.Elm
+                   Pure.Elm.Application
                    Pure.Elm.Memo
                    Pure.Elm.Sub
   build-depends:       base,
                        pure,
+                       pure-router,
                        containers,
                        stm
   hs-source-dirs:      src
