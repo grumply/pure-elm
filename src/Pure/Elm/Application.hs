@@ -14,6 +14,7 @@ data Application settings session route = Application
   , pages    :: Elm (Command session settings route) => route -> settings -> session -> View
   , startup  :: settings -> session -> route -> IO ()
   , shutdown :: settings -> session -> route -> IO ()
+  , routing  :: route -> route -> session -> IO session
   }
 
 class Routes rt where
@@ -34,6 +35,10 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "$('meta[name=\"description\"]').attr('content', $1)" set_description_js :: Txt -> IO ()
+
+foreign import javascript unsafe
+  "window.scrollTo({ top: 0 })" scroll_top_js :: IO ()
+
 #endif
 
 setTitle :: Txt -> IO ()
@@ -48,6 +53,14 @@ setDescription :: Txt -> IO ()
 setDescription d =
 #ifdef __GHCJS__
   set_description_js d
+#else
+  pure ()
+#endif
+
+scrollTop :: IO ()
+scrollTop =
+#ifdef __GHCJS__
+  scroll_top_js
 #else
   pure ()
 #endif
@@ -68,9 +81,11 @@ run Application {..} = inject body (Div <||> [ router, Pure.Elm.run app config ]
         update Shutdown     _ st@(route,settings,session) = shutdown settings session route >> pure st
         update Settings settings (route,_,session)        = pure (route,settings,session)
         update (Update f)   _ (route,settings,session)    = pure (route,settings,f session)
-        update (Route route) _ (_,settings,session)       = do
+        update (Route route) _ (old,settings,session)       = do
+          scrollTop
           setTitle (title route)
-          pure (route,settings,session)
+          session' <- routing old route session
+          pure (route,settings,session')
 
         view :: Elm (Command session settings route) => settings -> (route,settings,session) -> View
         view _ (route,settings,session) = pages route settings session 
