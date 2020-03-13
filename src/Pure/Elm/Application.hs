@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, RankNTypes, BangPatterns, RecordWildCards, ScopedTypeVariables #-}
+{-# LANGUAGE ImplicitParams, RankNTypes, BangPatterns, RecordWildCards, ScopedTypeVariables, CPP #-}
 module Pure.Elm.Application where
 
 import Pure.Elm hiding (run)
@@ -28,22 +28,52 @@ data Command session settings route
   | Update (session -> session)
   | Shutdown
 
+#ifdef __GHCJS__
+foreign import javascript unsafe
+  "if (document.title != $1) { document.title = $1; }" set_title_js :: Txt -> IO ()
+
+foreign import javascript unsafe
+  "$('meta[name=\"description\"]').attr('content', $1)" set_description_js :: Txt -> IO ()
+#endif
+
+setTitle :: Txt -> IO ()
+setTitle t =
+#ifdef __GHCJS__
+  set_title_js t
+#else
+  pure ()
+#endif
+
+setDescription :: Txt -> IO ()
+setDescription d =
+#ifdef __GHCJS__
+  set_description_js d
+#else
+  pure ()
+#endif
+
 run :: forall settings session route. 
        (Typeable settings, Typeable session, Typeable route, Routes route) 
-    => Application settings session route -> View
-run Application {..} = Pure.Elm.run app config
+    => Application settings session route -> IO ()
+run Application {..} = inject body (Div <||> [ router, Pure.Elm.run app config ])
   where
+    router = View (Router (home :: route) (route routes))
     app :: App settings (route,settings,session) (Command session settings route)
     app = App [Startup] [Settings] [Shutdown] (home :: route,config,initial) update view
       where
-        update Startup      _ st@(route,settings,session) = startup  settings session route >> pure st
+        update Startup      _ st@(route,settings,session) = do
+          onRoute' (command . Route)
+          startup settings session route
+          pure st
         update Shutdown     _ st@(route,settings,session) = shutdown settings session route >> pure st
         update Settings settings (route,_,session)        = pure (route,settings,session)
         update (Update f)   _ (route,settings,session)    = pure (route,settings,f session)
-        update (Route route) _ (_,settings,session)       = pure (route,settings,session)
+        update (Route route) _ (_,settings,session)       = do
+          setTitle (title route)
+          pure (route,settings,session)
 
         view :: Elm (Command session settings route) => settings -> (route,settings,session) -> View
-        view _ (route,settings,session) = pages route settings session
+        view _ (route,settings,session) = pages route settings session 
 
 update :: Elm (Command session settings route) => (session -> session) -> IO ()
 update = command . Update
