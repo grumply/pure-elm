@@ -11,10 +11,10 @@ import Data.Typeable
 data Application settings session route = Application
   { config   :: settings
   , initial  :: session
-  , pages    :: Elm (Command session settings route) => route -> settings -> session -> View
-  , startup  :: settings -> session -> route -> IO ()
-  , shutdown :: settings -> session -> route -> IO ()
-  , routing  :: route -> route -> session -> IO session
+  , pages    :: Elm (Command settings session route) => route -> settings -> session -> View
+  , startup  :: route -> settings -> session -> IO ()
+  , shutdown :: route -> settings -> session -> IO ()
+  , routing  :: route -> route -> settings -> session -> IO session
   }
 
 class Routes rt where
@@ -22,7 +22,7 @@ class Routes rt where
   title  :: rt -> Txt
   routes :: forall x. Routing rt x
 
-data Command session settings route 
+data Command settings session route 
   = Startup
   | Route route
   | Settings 
@@ -71,26 +71,26 @@ run :: forall settings session route.
 run Application {..} = inject body (Div <||> [ router, Pure.Elm.run app config ])
   where
     router = View (Router (home :: route) (route routes))
-    app :: App settings (route,settings,session) (Command session settings route)
+    app :: App settings (route,settings,session) (Command settings session route)
     app = App [Startup] [Settings] [Shutdown] (home :: route,config,initial) update view
       where
         update Startup      _ st@(route,settings,session) = do
           onRoute' (command . Route)
-          startup settings session route
+          startup route settings session 
           pure st
-        update Shutdown     _ st@(route,settings,session) = shutdown settings session route >> pure st
+        update Shutdown     _ st@(route,settings,session) = shutdown route settings session >> pure st
         update Settings settings (route,_,session)        = pure (route,settings,session)
         update (Update f)   _ (route,settings,session)    = pure (route,settings,f session)
         update (Route route) _ (old,settings,session)       = do
           scrollTop
           setTitle (title route)
-          session' <- routing old route session
+          session' <- routing old route settings session
           pure (route,settings,session')
 
-        view :: Elm (Command session settings route) => settings -> (route,settings,session) -> View
+        view :: Elm (Command settings session route) => settings -> (route,settings,session) -> View
         view _ (route,settings,session) = pages route settings session 
 
-update :: Elm (Command session settings route) => (session -> session) -> IO ()
+update :: Elm (Command settings session route) => (session -> session) -> IO ()
 update = command . Update
 
 settings :: (?settings :: settings) => settings
@@ -99,10 +99,10 @@ settings = ?settings
 session :: (?session :: session) => session
 session = ?session
 
-type Page session settings route = Elm (Command session settings route) => session -> settings -> View
+type Page settings session route = Elm (Command settings session route) => settings -> session -> View
 
-page :: (Elm (Command session settings route) => ((?session :: session, ?settings :: settings) => View)) -> Page session settings route
-page f = \ses set -> 
+page :: (Elm (Command settings session route) => ((?session :: session, ?settings :: settings) => View)) -> Page settings session route
+page f = \set ses -> 
   let 
     ?session  = ses
     ?settings = set
