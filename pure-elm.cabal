@@ -23,6 +23,7 @@ library
   build-depends:       base,
                        pure,
                        pure-router,
+                       pure-txt,
                        containers,
                        stm
   hs-source-dirs:      src
