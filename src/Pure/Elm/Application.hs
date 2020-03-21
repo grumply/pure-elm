@@ -250,14 +250,11 @@ processLinksWith ls = go
           ps = properties (getFeatures v) 
           v' = setChildren (fmap go (getChildren v)) v
       in case Map.lookup "href" ps <|> Map.lookup "href" as of
-           Just ref ->
-             case hostname ref of
-               hn  | Txt.null hn 
-                   || hn `elem` scopes ls
-                   -> lref ref v'
-               _   -> v' <| blank_ . noopener_
-           Nothing -> v'
-
+           Just ref 
+             | isRelative ref 
+             || hostname ref `elem` scopes ls -> lref ref v'
+             | otherwise                      -> v' <| blank_ . noopener_
+           Nothing                            -> v'
 
 -- | Calling `processLinks` will turn any `href` values in the `View` into click
 -- event interceptions that inject the route into the constraint-supplied `Elm` 
@@ -291,6 +288,9 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "window.getHostname($1)" hostname_js :: Txt -> Txt
+
+foreign import javascript unsafe
+  "window.isRelative($1)" is_relative_js :: Txt -> Bool
 #endif
 
 setTitle :: Txt -> IO ()
@@ -331,6 +331,14 @@ hostname t =
   hostname_js t
 #else
   ""
+#endif
+
+isRelative :: Txt -> Bool
+isRelative t =
+#ifdef __GHCJS__
+  is_relative_js t
+#else
+  False
 #endif
 
 -- Turn an `App` with a supplied environment into a `View`.
