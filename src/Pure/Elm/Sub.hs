@@ -19,6 +19,8 @@ import Data.Map as Map hiding ((\\))
 
 type Elm msg = (?command :: msg -> IO Bool)
 
+data Subscription msg = Subscription Unique
+
 type Dispatcher = Either [Any] [(Unique,Any -> IO Bool)]
 type Broker = TMVar (Map TypeRep Dispatcher)
 
@@ -27,7 +29,7 @@ broker :: Broker
 broker = unsafePerformIO (newTMVarIO mempty)
 
 -- Be careful not to block in the callback.
-unsafeSubscribeWith :: forall msg. Typeable msg => (msg -> IO Bool) -> IO Unique
+unsafeSubscribeWith :: forall msg. Typeable msg => (msg -> IO Bool) -> IO (Subscription msg)
 unsafeSubscribeWith f = mdo
   let 
     g = f . unsafeCoerce
@@ -45,16 +47,13 @@ unsafeSubscribeWith f = mdo
       Just (Right hs) -> do
         putTMVar broker (Map.insert tr (Right (hs ++ [(u,g)])) b)
         pure (pure ())
-  pure u
+  pure (Subscription u)
 
-subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO ()
-subscribeWith f = void $ unsafeSubscribeWith (?command . f)
+subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO (Subscription msg') 
+subscribeWith f = unsafeSubscribeWith (?command . f)
 
-subscribe :: (Typeable msg, Elm msg) => IO ()
-subscribe = void $ unsafeSubscribeWith ?command
-
-subscribe' :: (Typeable msg, Elm msg) => IO Unique
-subscribe' = unsafeSubscribeWith ?command
+subscribe :: (Typeable msg, Elm msg) => IO (Subscription msg)
+subscribe = unsafeSubscribeWith ?command
 
 publish :: Typeable msg => msg -> IO ()
 publish = void . publish'
@@ -101,9 +100,5 @@ cleanBroker us = do
         putTMVar broker (Map.insert tr (Right hs') b)
       _ -> putTMVar broker b
 
-unsubscribe :: forall msg. (Typeable msg, Elm msg) => Unique -> IO ()
-unsubscribe u = cleanBroker @msg [u] 
-
-unsubscribeWith :: forall msg. Typeable msg => Proxy msg -> Unique -> IO ()
-unsubscribeWith _ u = cleanBroker @msg [u] 
-
+unsubscribe :: forall msg. (Typeable msg, Elm msg) => Subscription msg -> IO ()
+unsubscribe (Subscription u) = cleanBroker @msg [u] 
