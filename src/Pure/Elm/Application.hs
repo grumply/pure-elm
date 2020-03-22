@@ -213,7 +213,7 @@ withScrollPositionFromHistory f = do
 #ifdef __GHCJS__
   x <- recall_page_x_offset_js
   y <- recall_page_y_offset_js
-  when (y /= 0 && x /= 0) (f x y)
+  when (y /= 0 || x /= 0) (f x y)
 #else
   pure ()
 #endif
