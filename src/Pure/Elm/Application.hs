@@ -181,14 +181,14 @@ class Routes rt where
 
 #ifdef __GHCJS__
 foreign import javascript unsafe
-  "var st = history.state; st.elmScrollY = window.pageYOffset; st.elmScrollX = window.pageXOffset; history.replaceState(st,null,null);"
+  "var st = history.state || {}; st.elmScrollY = window.pageYOffset; st.elmScrollX = window.pageXOffset; history.replaceState(st,null,null);"
     store_scroll_position_js :: IO ()
 
 foreign import javascript unsafe
-  "$r = history.state.elmScrollY || 0" recall_page_y_offset_js :: IO Int
+  "$r = (history.state && history.state.elmScrollY) || 0" recall_page_y_offset_js :: IO Int
 
 foreign import javascript unsafe
-  "$r = history.state.elmScrollX || 0" recall_page_x_offset_js :: IO Int
+  "$r = (history.state && history.state.elmScrollX) || 0" recall_page_x_offset_js :: IO Int
 
 foreign import javascript unsafe
   "window.scrollTo($1,$2)" scroll_to_js :: Int -> Int -> IO ()
