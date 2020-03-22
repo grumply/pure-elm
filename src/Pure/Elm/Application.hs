@@ -179,31 +179,31 @@ class Routes rt where
   routes :: forall x. Routing rt x
   routes = dispatch home
 
--- | Store current scroll position.
-storeScrollPosition :: IO ()
-storeScrollPosition = 
-#ifdef __GHCJS__
-  store_scroll_position_js
-#else
-  pure ()
-#endif
-
 #ifdef __GHCJS__
 foreign import javascript unsafe
-  "var st = window.history.state; st.elmScrollY = window.pageYOffset; st.elmScrollX = window.pageXOffset; window.history.replaceState(st,null,null);"
+  "var st = history.state; st.elmScrollY = window.pageYOffset; st.elmScrollX = window.pageXOffset; history.replaceState(st,null,null);"
     store_scroll_position_js :: IO ()
 
 foreign import javascript unsafe
-  "$r = window.history.state.elmScrollY || 0" recall_page_y_offset_js :: IO Int
+  "$r = history.state.elmScrollY || 0" recall_page_y_offset_js :: IO Int
 
 foreign import javascript unsafe
-  "$r = window.history.state.elmScrollX || 0" recall_page_x_offset_js :: IO Int
+  "$r = history.state.elmScrollX || 0" recall_page_x_offset_js :: IO Int
 
 foreign import javascript unsafe
   "window.scrollTo($1,$2)" scroll_to_js :: Int -> Int -> IO ()
 
 foreign import javascript unsafe
   "window.scrollTo({ top: $2, left: $1, behavior: 'smooth' })" scroll_to_smooth_js :: Int -> Int -> IO ()
+#endif
+
+-- | Store current scroll position in the current `window.history.state`.
+storeScrollPosition :: IO ()
+storeScrollPosition = 
+#ifdef __GHCJS__
+  store_scroll_position_js
+#else
+  pure ()
 #endif
 
 -- | Handle a stored scroll position with a callback `f :: X-Offset -> Y-Offset -> IO ()`
@@ -213,7 +213,7 @@ withScrollPositionFromHistory f = do
 #ifdef __GHCJS__
   x <- recall_page_x_offset_js
   y <- recall_page_y_offset_js
-  when (y /= 0 && x /= y) (f x y)
+  when (y /= 0 && x /= 0) (f x y)
 #else
   pure ()
 #endif
@@ -332,6 +332,12 @@ processLinksWith ls = go
       | noopener ls = Rel "noopener"
       | otherwise   = id
 
+    lref' ref a = OnClickWith intercept (\_ -> handle) (Href ref a)
+      where
+        handle = do
+          storeScrollPosition
+          goto ref
+
     go v =
       let as = attributes (getFeatures v)
           ps = properties (getFeatures v) 
@@ -339,7 +345,7 @@ processLinksWith ls = go
       in case Map.lookup "href" ps <|> Map.lookup "href" as of
            Just ref 
              | isRelative ref 
-             || hostname ref `elem` scopes ls -> lref ref v'
+             || hostname ref `elem` scopes ls -> lref' ref v'
              | otherwise                      -> v' <| blank_ . noopener_
            Nothing                            -> v'
 
