@@ -13,6 +13,10 @@ module Pure.Elm.Application
   , command
   , reroute
   , link
+  , withScrollPositionFromHistory
+  , restoreScrollPosition
+  , restoreScrollPositionSmooth
+  , storeScrollPosition
   , processLinks
   , LinkSettings(..)
   , processLinksWith
@@ -48,7 +52,7 @@ import qualified Pure.Router
 import qualified Data.Map as Map
 
 import Control.Applicative
-import Control.Monad (foldM,void)
+import Control.Monad (foldM,void,when)
 import Data.Foldable (for_)
 import Data.Typeable
 import Data.Unique
@@ -175,15 +179,98 @@ class Routes rt where
   routes :: forall x. Routing rt x
   routes = dispatch home
 
+-- | Store current scroll position.
+storeScrollPosition :: IO ()
+storeScrollPosition = 
+#ifdef __GHCJS__
+  store_scroll_position_js
+#else
+  pure ()
+#endif
+
+#ifdef __GHCJS__
+foreign import javascript unsafe
+  "var st = window.history.state; st.elmScrollY = window.pageYOffset; st.elmScrollX = window.pageXOffset; window.history.replaceState(st,null,null);"
+    store_scroll_position_js :: IO ()
+
+foreign import javascript unsafe
+  "$r = window.history.state.elmScrollY || 0" recall_page_y_offset_js :: IO Int
+
+foreign import javascript unsafe
+  "$r = window.history.state.elmScrollX || 0" recall_page_x_offset_js :: IO Int
+
+foreign import javascript unsafe
+  "window.scrollTo($1,$2)" scroll_to_js :: Int -> Int -> IO ()
+
+foreign import javascript unsafe
+  "window.scrollTo({ top: $2, left: $1, behavior: 'smooth' })" scroll_to_smooth_js :: Int -> Int -> IO ()
+#endif
+
+-- | Handle a stored scroll position with a callback `f :: X-Offset -> Y-Offset -> IO ()`
+-- If no non-zero scroll position is available, the callback is not called. 
+withScrollPositionFromHistory :: (Int -> Int -> IO ()) -> IO ()
+withScrollPositionFromHistory f = do
+#ifdef __GHCJS__
+  x <- recall_page_x_offset_js
+  y <- recall_page_y_offset_js
+  when (y /= 0 && x /= y) (f x y)
+#else
+  pure ()
+#endif
+
+-- | Restore a scroll position immediately. 
+--
+-- Note: This method must be called after content is restored. In some cases
+-- of dynamic content rendering, orchestration will be required to restore 
+-- scroll position successfully.
+--
+-- Note: The approach taken in this module will not allow for restoring scroll 
+-- positon when the browser's forward button is clicked.
+restoreScrollPosition :: IO ()
+restoreScrollPosition = withScrollPositionFromHistory setScrollPosition
+  where
+    setScrollPosition x y = do
+#ifdef __GHCJS__
+      scroll_to_js x y
+#else
+      pure ()
+#endif
+
+-- | Restore a scroll position smoothly. 
+--
+-- Note: This method must be called after content is restored. In some cases
+-- of dynamic content rendering, orchestration will be required to restore 
+-- scroll position successfully.
+--
+-- Note: The approach taken in this module will not allow for restoring scroll 
+-- positon when the browser's forward button is clicked.
+restoreScrollPositionSmooth :: IO ()
+restoreScrollPositionSmooth = withScrollPositionFromHistory setScrollPositionSmooth
+  where
+    setScrollPositionSmooth x y = do
+#ifdef __GHCJS__
+      scroll_to_smooth_js x y
+#else
+      pure ()
+#endif
+
 -- | Link to a valid route via the `Routes` type class.
 --
 -- Be sure that: 
 --
 -- > forall rt. route routes (location rt) == Just rt
 --
-{-# INLINE link #-}
+-- Note: This method stores a scroll position in the current history element 
+-- before routing to a new path. See `restoreScrollPosition` for scroll 
+-- restoration.
 link :: (HasFeatures a, Routes rt) => rt -> a -> a
-link = url lref Href . location
+link = url lref' Href . location
+  where
+    lref' ref a = OnClickWith intercept (\_ -> handle) (Href ref a)
+      where
+        handle = do
+          storeScrollPosition
+          goto ref
 
 data Command msg rt
   = Startup
