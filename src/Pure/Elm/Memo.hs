@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables, ExistentialQuantification, TupleSections, AllowAmbiguousTypes, TypeApplications, ViewPatterns #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, ExistentialQuantification, TupleSections, AllowAmbiguousTypes, TypeApplications, ViewPatterns, BangPatterns #-}
 module Pure.Elm.Memo where
 
 import Control.Concurrent
@@ -9,12 +9,11 @@ import Data.Map as Map
 import Data.IntMap as IntMap
 import Data.Typeable
 import System.Mem.StableName
-import System.Mem.Weak
 import System.IO.Unsafe
 
 data Value = forall a b. (Typeable a, Typeable b) => Value {-# UNPACK #-}!(StableName a) !b
 
-type Ledger = MVar (IntMap (Weak (MVar ThreadStore)))
+type Ledger = MVar (IntMap (MVar ThreadStore))
 
 type ThreadStore = Map TypeRep Value
 
@@ -29,17 +28,12 @@ modifyThreadStore f = do
   !b  <- modifyMVar ts f
   pure b
   where
-    go :: ThreadId -> IntMap (Weak (MVar ThreadStore)) -> IO (IntMap (Weak (MVar ThreadStore)),MVar ThreadStore)
+    go :: ThreadId -> IntMap (MVar ThreadStore) -> IO (IntMap (MVar ThreadStore),MVar ThreadStore)
     go tid@(hash -> htid) ldgr
-      | Just wts <- IntMap.lookup htid ldgr = do
-        mts <- deRefWeak wts
-        case mts of
-          Nothing -> error "Pure.Elm.Memo.modifyThreadStore: invariant broken; thread store already garbage collected"
-          Just ts -> pure (ldgr,ts)
+      | Just ts <- IntMap.lookup htid ldgr = pure (ldgr,ts)
       | otherwise = do
         ts  <- newMVar Map.empty
-        wts <- mkWeak tid ts (Just $ removeThreadStore htid)
-        pure (IntMap.insert htid wts ldgr,ts)
+        pure (IntMap.insert htid ts ldgr,ts)
 
 withThreadStore :: (ThreadStore -> IO a) -> IO a
 withThreadStore f = modifyThreadStore $ \ts -> do
@@ -73,3 +67,6 @@ memo f a = do
       pure b
     Just b -> 
       pure b
+
+cleanupThreadStore :: ThreadId -> IO ()
+cleanupThreadStore tid = modifyMVar_ ledger (pure . IntMap.delete (hash tid))

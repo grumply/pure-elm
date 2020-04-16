@@ -78,7 +78,7 @@ run App {..} = Component app . (Env @msg)
             env <- ask self
             mdl <- get self
             update (coerce env) mdl _shutdown
-            pure ()
+            myThreadId >>= Memo.cleanupThreadStore
           , render = _view . coerce
           }
 

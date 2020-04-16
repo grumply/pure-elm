@@ -87,3 +87,37 @@ The memoization API:
 ```haskell
 Pure.Elm.memo :: Elm msg => (b -> msg) -> (a -> IO b) -> a -> IO ()
 ```
+
+As an example of `memo` in action:
+
+```haskell
+main = inject body (run test ())
+  where 
+    test = App [] [] [] Model update view
+
+data Model = Model
+
+data Msg = Test Int | Print Txt
+
+data Tag
+
+update (Print m) _ mdl = do
+    logJSON m
+    pure mdl
+update t _ mdl = do
+    let 
+      act _ = do
+        logJSON ("Getting time" :: Txt)
+        toPrettyTime <$> time 
+    memo @Tag Print act t
+    pure mdl   
+
+view _ _ = Div <||>
+  [ Button <| OnClick (\_ -> command (Test 1)) |> [ "Test 1" ]
+  , Button <| OnClick (\_ -> command (Test 2)) |> [ "Test 2" ]
+  ]
+```
+
+When compiled with optimization, multiple clicks of `Test 1` or `Test 2` results in a single call to `act`. Alternating calls to `Test 1` and `Test 2` results in multiple calls to `act`.
+
+When compiled without optimization, `act` is called with every click of the buttons.
