@@ -96,21 +96,15 @@ main = inject body (run test ())
     test = App [] [] [] Model update view
 
 data Model = Model
-
 data Msg = Test Int | Print Txt
-
 data Tag
 
-update (Print m) _ mdl = do
-    logJSON m
-    pure mdl
+update (Print m) _ mdl = logJSON m >> pure mdl
 update t _ mdl = do
-    let 
-      act _ = do
-        logJSON ("Getting time" :: Txt)
-        toPrettyTime <$> time 
-    memo @Tag Print act t
-    pure mdl   
+  flip (memo @Tag Print) t $ \_ -> do
+    logJSON ("Getting time" :: Txt)
+    toPrettyTime <$> time 
+  pure mdl   
 
 view _ _ = Div <||>
   [ Button <| OnClick (\_ -> command (Test 1)) |> [ "Test 1" ]
@@ -121,3 +115,5 @@ view _ _ = Div <||>
 When compiled with optimization, multiple clicks of `Test 1` or `Test 2` results in a single call to `act`. Alternating calls to `Test 1` and `Test 2` results in multiple calls to `act`.
 
 When compiled without optimization, `act` is called with every click of the buttons.
+
+Note: `memo` does not work in event handlers, like `OnClick`, etc....
