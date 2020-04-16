@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
-   ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash #-}
-module Pure.Elm (App(..),run,command,map,module Export,memo,memo',omem,omem') where
+   ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash, 
+   AllowAmbiguousTypes #-}
+module Pure.Elm (App(..),run,command,map,module Export,memo,omem) where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view,update)
@@ -77,7 +78,7 @@ run App {..} = Component app . (Env @msg)
             env <- ask self
             mdl <- get self
             update (coerce env) mdl _shutdown
-            myThreadId >>= Memo.cleanLedger
+            pure ()
           , render = _view . coerce
           }
 
@@ -95,18 +96,11 @@ map f a =
        in a
 
 {-# INLINE memo #-}
-memo :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()
-memo msg f a = void (memo' msg f a)
-
-{-# INLINE memo' #-}
-memo' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO (Maybe ThreadId)
-memo' msg f a = Memo.memo' f (command . msg) a
+memo :: forall tag a b msg. (Typeable tag,Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()
+memo msg f a = do
+  b <- Memo.memo @(tag,a) f a
+  Memo.memo @(tag,b) (command . msg) b
 
 {-# INLINE omem #-}
-omem :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO ()
-omem msg a f = memo msg f a
-
-{-# INLINE omem' #-}
-omem' :: (Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO (Maybe ThreadId)
-omem' msg a f = memo' msg f a
-
+omem :: forall tag a b msg. (Typeable tag, Typeable a, Typeable b, Elm msg) => (b -> msg) -> a -> (a -> IO b) -> IO ()
+omem msg a f = memo @tag msg f a

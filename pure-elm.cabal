@@ -26,7 +26,8 @@ library
                        pure-router,
                        pure-txt,
                        containers,
-                       stm
+                       stm,
+                       hashable
 
   hs-source-dirs:      src
 

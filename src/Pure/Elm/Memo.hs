@@ -1,70 +1,75 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables, ExistentialQuantification #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, ExistentialQuantification, TupleSections, AllowAmbiguousTypes, TypeApplications, ViewPatterns #-}
 module Pure.Elm.Memo where
 
 import Control.Concurrent
 import Control.Monad
+import Data.Foldable
+import Data.Hashable
 import Data.Map as Map
+import Data.IntMap as IntMap
 import Data.Typeable
 import System.Mem.StableName
 import System.Mem.Weak
 import System.IO.Unsafe
 
-data Tracked = forall a b. (Typeable a, Typeable b) => Tracked (StableName a) (Weak b)
+data Value = forall a b. (Typeable a, Typeable b) => Value {-# UNPACK #-}!(StableName a) !b
+
+type Ledger = MVar (IntMap (Weak (MVar ThreadStore)))
+
+type ThreadStore = Map TypeRep Value
 
 {-# NOINLINE ledger #-}
-ledger :: MVar (Map ThreadId (MVar (Map TypeRep Tracked)))
-ledger = unsafePerformIO (newMVar Map.empty)
+ledger :: Ledger 
+ledger = unsafePerformIO (newMVar IntMap.empty)
 
-memo' :: forall a b. (Typeable a,Typeable b) => (a -> IO b) -> (b -> IO ()) -> (a -> IO (Maybe ThreadId))
-memo' f with a = do
+modifyThreadStore :: (ThreadStore -> IO (ThreadStore,b)) -> IO b
+modifyThreadStore f = do
   tid <- myThreadId
+  ts  <- modifyMVar ledger (go tid)
+  !b  <- modifyMVar ts f
+  pure b
+  where
+    go :: ThreadId -> IntMap (Weak (MVar ThreadStore)) -> IO (IntMap (Weak (MVar ThreadStore)),MVar ThreadStore)
+    go tid@(hash -> htid) ldgr
+      | Just wts <- IntMap.lookup htid ldgr = do
+        mts <- deRefWeak wts
+        case mts of
+          Nothing -> error "Pure.Elm.Memo.modifyThreadStore: invariant broken; thread store already garbage collected"
+          Just ts -> pure (ldgr,ts)
+      | otherwise = do
+        ts  <- newMVar Map.empty
+        wts <- mkWeak tid ts (Just $ removeThreadStore htid)
+        pure (IntMap.insert htid wts ldgr,ts)
+
+withThreadStore :: (ThreadStore -> IO a) -> IO a
+withThreadStore f = modifyThreadStore $ \ts -> do
+  !a <- f ts
+  pure (ts,a)
+
+removeThreadStore :: Int -> IO ()
+removeThreadStore htid = modifyMVar_ ledger (pure . IntMap.delete htid)
+
+lookupValue :: forall tag a b. (Typeable tag, Typeable a, Typeable b) => StableName a -> IO (Maybe b)
+lookupValue sna = let tag = typeOf (undefined :: tag) in
+  withThreadStore $ \ts ->
+    case Map.lookup tag ts of
+      Just (Value sna' b) | eqStableName sna sna' -> pure (cast b)
+      _ -> pure Nothing
+
+insertValue :: forall tag a b. (Typeable tag, Typeable a, Typeable b) => StableName a -> b -> IO ()
+insertValue sna b = modifyThreadStore insert
+  where
+    tag = typeOf (undefined :: tag)
+    insert ts = pure (Map.insert tag (Value sna b) ts,())
+
+memo :: forall tag a b. (Typeable tag, Typeable a,Typeable b) => (a -> IO b) -> a -> IO b
+memo f a = do
   sna <- makeStableName a
-  let 
-    tr = typeOf (undefined :: a,undefined :: b)
-
-    clean = join $ modifyMVar ledger $ \ldgr -> do
-      case Map.lookup tid ldgr of
-        Nothing -> pure (ldgr,pure ())
-        Just localStorage -> do
-          let delete = modifyMVar_ localStorage (pure . Map.delete tr)
-          pure (ldgr,delete)
-
-    insert b = join $ modifyMVar ledger $ \ldgr ->
-      case Map.lookup tid ldgr of
-        Nothing -> do
-          localStorage <- newMVar Map.empty
-          pure 
-            (Map.insert tid localStorage ldgr,do
-              wk <- mkWeakPtr b (Just clean)
-              let tracked = Tracked sna wk
-              modifyMVar_ localStorage (pure . Map.insert tr tracked)
-            )
-        Just localStorage ->
-          pure 
-            (ldgr,do
-              wk <- mkWeakPtr b (Just clean)
-              let tracked = Tracked sna wk
-              modifyMVar_ localStorage (pure . Map.insert tr tracked)
-            )
-
-  ldgr <- readMVar ledger
-  mt <- maybe (pure Nothing) (fmap (Map.lookup tr) . readMVar) (Map.lookup tid ldgr)
-
-  case mt of
-    Just (Tracked old_sna wk) | cast old_sna == Just sna -> do
-      mb <- deRefWeak wk
-      case join (fmap cast mb) :: Maybe b of
-        Just b  -> pure Nothing
-        Nothing ->
-          fmap Just $ forkIO $ do
-            b <- f a
-            insert b
-            with b
-    _ ->
-      fmap Just $ forkIO $ do
-        b <- f a
-        insert b
-        with b
-
-cleanLedger :: ThreadId -> IO ()
-cleanLedger tid = modifyMVar_ ledger (pure . Map.delete tid)
+  mv  <- lookupValue @tag sna 
+  case mv of
+    Nothing -> do
+      !b <- f a
+      insertValue @tag sna b
+      pure b
+    Just b -> 
+      pure b
