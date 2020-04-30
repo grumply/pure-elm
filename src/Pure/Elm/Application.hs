@@ -10,6 +10,7 @@ module Pure.Elm.Application
   , Application
   , run
   , retitle
+  , describe
   , command
   , reroute
   , link
@@ -38,7 +39,6 @@ module Pure.Elm.Application
   , Pure.Elm.Sub.publish
   , Pure.Elm.Sub.publish'
   , Pure.Elm.Sub.unsubscribe
-  , Pure.Elm.Sub.unsafeSubscribeWith
   ) where
 
 import Pure as Export hiding (Home,update,view,url)
@@ -195,6 +195,18 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "window.scrollTo({ top: $2, left: $1, behavior: 'smooth' })" scroll_to_smooth_js :: Int -> Int -> IO ()
+
+foreign import javascript unsafe
+  "var a = document.querySelector('meta[name=\"description\"]'); if (a) { a.setAttribute('content', $1);} else { var meta = document.createElement('meta'); meta.setAttribute('name','description'); meta.setAttribute('content', $1); document.getElementsByTagName('head')[0].appendChild(meta)};"
+    set_description_js :: Txt -> IO ()
+#endif
+
+describe :: Txt -> IO ()
+describe d =
+#ifdef __GHCJS__
+  set_description_js d
+#else
+  pure ()
 #endif
 
 -- | Store current scroll position in the current `window.history.state`.
@@ -371,9 +383,6 @@ foreign import javascript unsafe
   "if (document.title != $1) { document.title = $1; }" set_title_js :: Txt -> IO ()
 
 foreign import javascript unsafe
-  "$('meta[name=\"description\"]').attr('content', $1)" set_description_js :: Txt -> IO ()
-
-foreign import javascript unsafe
   "window.scrollTo({ top: 0 })" scroll_top_js :: IO ()
 
 foreign import javascript unsafe
@@ -390,14 +399,6 @@ setTitle :: Txt -> IO ()
 setTitle t =
 #ifdef __GHCJS__
   set_title_js t
-#else
-  pure ()
-#endif
-
-setDescription :: Txt -> IO ()
-setDescription d =
-#ifdef __GHCJS__
-  set_description_js d
 #else
   pure ()
 #endif
