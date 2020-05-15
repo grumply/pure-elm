@@ -459,7 +459,7 @@ run App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
 
         update (Routed newRoute) env (oldRoute,st) = do
           st' <- foldM (\st m -> _update oldRoute (m newRoute) env st) st _route
-          scrollTop
+          addAnimation scrollTop -- avoid scrolling to the top of old content
           for_ (title newRoute) setTitle 
           pure (newRoute,st')
 
