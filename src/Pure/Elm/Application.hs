@@ -41,9 +41,9 @@ module Pure.Elm.Application
   , Pure.Elm.Sub.unsubscribe
   ) where
 
-import Pure as Export hiding (Home,update,view,url)
+import Pure as Export hiding (Home,update,view,url,link)
 import Pure.Data.Txt as Txt (uncons,null)
-import Pure.Elm hiding (App,Elm,run,command,url,unsafeSubscribeWith,subscribeWith,subscribe,subscribe',publish,publish',publishing)
+import Pure.Elm hiding (App,Elm,run,command,url,unsafeSubscribeWith,subscribeWith,subscribe,subscribe',publish,publish',publishing,link)
 import qualified Pure.Elm
 import qualified Pure.Elm.Sub
 import Pure.Router as Export
