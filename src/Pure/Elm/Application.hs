@@ -42,7 +42,7 @@ module Pure.Elm.Application
   ) where
 
 import Pure as Export hiding (Home,update,view,url,link)
-import Pure.Data.Txt as Txt (uncons,null)
+import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
 import Pure.Elm hiding (App,Elm,run,command,url,unsafeSubscribeWith,subscribeWith,subscribe,subscribe',publish,publish',publishing,link)
 import qualified Pure.Elm
 import qualified Pure.Elm.Sub
@@ -354,11 +354,17 @@ processLinksWith ls = go
       let as = attributes (getFeatures v)
           ps = properties (getFeatures v) 
           v' = setChildren (fmap go (getChildren v)) v
+          ipo = Txt.isPrefixOf
       in case Map.lookup "href" ps <|> Map.lookup "href" as of
-           Just ref 
+           Just ref
+             |  "mailto:" `ipo` ref
+             || "webcal:" `ipo` ref           -> v'
+
              | isRelative ref 
              || hostname ref `elem` scopes ls -> lref' ref v'
+
              | otherwise                      -> v' <| blank_ . noopener_
+
            Nothing                            -> v'
 
 -- | Calling `processLinks` will turn any `href` values in the `View` into click
