@@ -357,7 +357,8 @@ processLinksWith ls = go
           ipo = Txt.isPrefixOf
       in case Map.lookup "href" ps <|> Map.lookup "href" as of
            Just ref
-             |  "mailto:" `ipo` ref
+             |  "#"       `ipo` ref
+             || "mailto:" `ipo` ref
              || "webcal:" `ipo` ref           -> v'
 
              | isRelative ref 
