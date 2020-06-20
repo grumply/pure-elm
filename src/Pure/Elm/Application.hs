@@ -21,6 +21,9 @@ module Pure.Elm.Application
   , processLinks
   , LinkSettings(..)
   , processLinksWith
+  , setScrollRestoration
+  , ScrollRestoration(..)
+  , setManualScrollRestoration
   , Page
   , page
   , Settings
@@ -199,7 +202,28 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "var a = document.querySelector('meta[name=\"description\"]'); if (a) { a.setAttribute('content', $1);} else { var meta = document.createElement('meta'); meta.setAttribute('name','description'); meta.setAttribute('content', $1); document.getElementsByTagName('head')[0].appendChild(meta)};"
     set_description_js :: Txt -> IO ()
+
+foreign import javascript unsafe
+  "if ('scrollRestoration' in history) { history.scrollRestoration = $1;}"
+    set_scroll_restoration_js :: Txt -> IO ()
 #endif
+
+data ScrollRestoration = ManualScrollRestoration | AutoScrollRestoration
+
+setScrollRestoration :: ScrollRestoration -> IO ()
+setScrollRestoration sr =
+#ifdef __GHCJS__
+  set_scroll_restoration_js $
+    case sr of
+      ManualScrollRestoration -> "manual"
+      AutoScrollRestoration   -> "auto"
+#else
+  pure ()
+#endif
+
+setManualScrollRestoration :: IO ()
+setManualScrollRestoration = 
+  setScrollRestoration ManualScrollRestoration
 
 describe :: Txt -> IO ()
 describe d =
@@ -457,6 +481,7 @@ run App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
 
         update :: Elm msg rt => Command msg rt -> env -> (rt,st) -> IO (rt,st)
         update Startup      _ st = do
+          setManualScrollRestoration
           onRoute' (Pure.Elm.command . Routed)
           pure st
 
