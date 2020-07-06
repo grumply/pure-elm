@@ -347,8 +347,12 @@ reroute = Pure.Elm.command . Route
 data LinkSettings = LinkSettings
   { blank :: Bool
   , noopener :: Bool
+  , preloader :: Maybe (Txt -> View -> View)
   , scopes :: [Txt]
   }
+
+instance Default LinkSettings where
+  def = LinkSettings True True Nothing []
 
 -- | Calling `processLinks` will turn any `href` values into click event 
 -- interceptions that inject the route into the constraint-supplied `Elm` 
@@ -368,6 +372,11 @@ processLinksWith ls = go
       | noopener ls = Rel "noopener"
       | otherwise   = id
 
+    preload ref =
+      case preloader ls of
+        Just f -> f ref
+        _      -> id
+
     lref' ref a = OnClickWith intercept (\_ -> handle) (Href ref a)
       where
         handle = do
@@ -386,7 +395,7 @@ processLinksWith ls = go
              || "webcal:" `ipo` ref           -> v'
 
              | isRelative ref 
-             || hostname ref `elem` scopes ls -> lref' ref v'
+             || hostname ref `elem` scopes ls -> preload ref (lref' ref v')
 
              | otherwise                      -> v' <| blank_ . noopener_
 
@@ -407,7 +416,7 @@ processLinksWith ls = go
 -- will cause the application to fully reload, when clicked. 
 {-# INLINE processLinks #-}
 processLinks :: (Elm msg rt, Routes rt) => View -> View
-processLinks = processLinksWith (LinkSettings True True [])
+processLinks = processLinksWith (LinkSettings True True Nothing [])
 
 #ifdef __GHCJS__
 foreign import javascript unsafe
