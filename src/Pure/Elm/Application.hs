@@ -12,6 +12,7 @@ module Pure.Elm.Application
   , retitle
   , describe
   , command
+  , send
   , reroute
   , link
   , withScrollPositionFromHistory
@@ -330,6 +331,18 @@ retitle = Pure.Elm.command . Retitle
 command :: Elm msg rt => msg -> IO ()
 command = Pure.Elm.command . Message
 
+-- | Similar to `command`, but uses the publish mechanism rather than a local
+-- reference to the command channel. Requires a type application for the route
+-- type.
+--
+-- To use this function, you /MUST/ `subscribe` in the application, either during
+-- startup or otherwise before this method is used.
+--
+-- > send @MyRoute someMsg
+{-# INLINE send #-}
+send :: forall rt msg. (Typeable rt, Typeable msg) => msg -> IO ()
+send = Pure.Elm.publish . (Message :: msg -> Command msg rt)
+
 -- | Command the application to manually route. This should be equivalent to
 -- clicking on a link constructed with the `link` decorator, and will do the
 -- necessary HTML5 History modifications. Thus, it should be equivalent to:
@@ -492,7 +505,7 @@ run App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
         update Startup      _ st = do
           setManualScrollRestoration
           onRoute' (Pure.Elm.command . Routed)
-          pure st
+          pure st  
 
         update (Route newRoute) env st = do
           url goto setLocation (location newRoute)
