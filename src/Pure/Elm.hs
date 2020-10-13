@@ -1,14 +1,13 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash, 
-   AllowAmbiguousTypes #-}
-module Pure.Elm (App(..),run,command,map,module Export,memo,omem) where
+   AllowAmbiguousTypes, PatternSynonyms #-}
+module Pure.Elm (App(..),pattern Applet,run,command,map,module Export,memo,omem) where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view,update)
 
 import Control.Concurrent (myThreadId,ThreadId)
 import Control.Monad
-import Control.Monad.IO.Class as Export
 import Data.Function
 import Data.Typeable
 
@@ -40,6 +39,8 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
         (\_ _ -> Null)
 
 newtype ElmEnv msg env = Env env
+
+pattern Applet s r d m u v = App s r d m u v
 
 -- | Turn an `App st msg` into a component with `msg` property.
 {-# INLINE run #-}

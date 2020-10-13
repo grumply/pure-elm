@@ -1,18 +1,20 @@
 {-# LANGUAGE 
      ImplicitParams, RankNTypes, BangPatterns, RecordWildCards, 
      ScopedTypeVariables, CPP, ConstraintKinds, OverloadedStrings, 
-     AllowAmbiguousTypes, TypeApplications, LambdaCase 
+     AllowAmbiguousTypes, TypeApplications, LambdaCase, PatternSynonyms,
+     FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies
    #-}
 module Pure.Elm.Application 
   ( App(..)
   , Command(Message)
   , Elm
   , Application
+  , command
   , run
   , retitle
   , describe
-  , command
   , reroute
+  , message
   , link
   , withScrollPositionFromHistory
   , restoreScrollPosition
@@ -37,16 +39,14 @@ module Pure.Elm.Application
   , Routes(..)
   , subscribeWith
   , subscribe
-  , publishing
   , module Export
-  , Pure.Elm.Sub.publish
-  , Pure.Elm.Sub.publish'
-  , Pure.Elm.Sub.unsubscribe
+  , module Pure.Elm.Sub
+  , pattern Applet
   ) where
 
 import Pure as Export hiding (Home,update,view,url,link)
 import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
-import Pure.Elm hiding (App,Elm,run,command,url,unsafeSubscribeWith,subscribeWith,subscribe,subscribe',publish,publish',publishing,link)
+import Pure.Elm hiding (App,url,link,run)
 import qualified Pure.Elm
 import qualified Pure.Elm.Sub
 import Pure.Router as Export
@@ -59,6 +59,17 @@ import Control.Monad (foldM,void,when)
 import Data.Foldable (for_)
 import Data.Typeable
 import Data.Unique
+
+class Runnable a env | a -> env where
+  run :: a -> env -> View
+
+instance (Typeable env, Typeable st, Typeable msg) => Runnable (Pure.Elm.App env st msg) env where
+  run = Pure.Elm.run
+
+instance (Typeable env, Typeable st, Typeable msg, Typeable rt, Routes rt) => Runnable (App env st msg rt) env where
+  run = runApp
+
+
 
 -- There was a decision in this module to resolve which type parameterizes the 
 -- route type: the message type, or the context constraint. It was chosen that
@@ -121,8 +132,8 @@ data App env st msg rt = App
   , _route    :: [rt -> msg]
   , _shutdown :: [msg]
   , _model    :: st
-  , _update   :: !(Elm msg rt => rt -> msg -> env -> st -> IO st)
-  , _view     :: !(Elm msg rt => rt -> env -> st -> View)
+  , _update   :: !(Elm (Command msg rt) => rt -> msg -> env -> st -> IO st)
+  , _view     :: !(Elm (Command msg rt) => rt -> env -> st -> View)
   }
 
 -- | The URL type represents internal and external URLs: a value of URL is either
@@ -315,20 +326,21 @@ data Command msg rt
   | Retitle Txt
   | Message msg
 
-type Elm msg rt = Pure.Elm.Elm (Command msg rt)
+type Application env st msg rt = (Elm (Command msg rt),Session st,Settings env)
 
-type Application env st msg rt = (Elm msg rt,Session st,Settings env)
+newtype RetitleProxy = RetitleProxy Txt
 
 -- | Command the application to retitle the page.
 {-# INLINE retitle #-}
-retitle :: Elm msg rt => Txt -> IO ()
-retitle = Pure.Elm.command . Retitle
+retitle :: Txt -> IO ()
+retitle = Pure.Elm.Sub.publish . RetitleProxy
 
--- | Command the application to process a message. This can be called from any
--- constrained `Elm msg rt` context.
-{-# INLINE command #-}
-command :: Elm msg rt => msg -> IO ()
-command = Pure.Elm.command . Message
+newtype MessageProxy msg = MessageProxy msg
+
+message :: Typeable msg => msg -> IO ()
+message = Pure.Elm.Sub.publish . MessageProxy
+
+newtype RouteProxy rt = RouteProxy rt
 
 -- | Command the application to manually route. This should be equivalent to
 -- clicking on a link constructed with the `link` decorator, and will do the
@@ -341,8 +353,8 @@ command = Pure.Elm.command . Message
 -- > window.location.href = _
 --
 {-# INLINE reroute #-}
-reroute :: Elm msg rt => rt -> IO ()
-reroute = Pure.Elm.command . Route
+reroute :: Typeable rt => rt -> IO ()
+reroute = Pure.Elm.Sub.publish . RouteProxy
 
 data LinkSettings = LinkSettings
   { blank :: Bool
@@ -415,7 +427,7 @@ processLinksWith ls = go
 -- markdown contains local, internal, links that have a full to the application, they 
 -- will cause the application to fully reload, when clicked. 
 {-# INLINE processLinks #-}
-processLinks :: (Elm msg rt, Routes rt) => View -> View
+processLinks :: Routes rt => View -> View
 processLinks = processLinksWith (LinkSettings True True Nothing [])
 
 #ifdef __GHCJS__
@@ -476,25 +488,27 @@ isRelative t =
 #endif
 
 -- Turn an `App` with a supplied environment into a `View`.
-{-# INLINE run #-}
-run :: forall env st msg rt. (Typeable env, Typeable st, Typeable msg, Typeable rt, Routes rt) 
+{-# INLINE runApp #-}
+runApp :: forall env st msg rt. (Typeable env, Typeable st, Typeable msg, Typeable rt, Routes rt) 
     => App env st msg rt -> env -> View
-run App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
+runApp App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
   where
     router = View (Router (home :: rt) (Pure.Router.route routes))
 
     app :: Pure.Elm.App env (rt,st) (Command msg rt)
     app = Pure.Elm.App (Startup:fmap Message _startup) (fmap Message _receive) (fmap Message _shutdown) (home :: rt,_model) update view
       where
-        lift = Message
-
-        update :: Elm msg rt => Command msg rt -> env -> (rt,st) -> IO (rt,st)
+        update :: Elm (Command msg rt) => Command msg rt -> env -> (rt,st) -> IO (rt,st)
         update Startup      _ st = do
+          Pure.Elm.Sub.subscribeWith (\(RetitleProxy t) -> Retitle t)
+          Pure.Elm.Sub.subscribeWith (\(MessageProxy m) -> Message m)
+          Pure.Elm.Sub.subscribeWith (\(RouteProxy r)   -> Route r)
           setManualScrollRestoration
           onRoute' (Pure.Elm.command . Routed)
           pure st  
 
         update (Route newRoute) env st = do
+          storeScrollPosition
           url goto setLocation (location newRoute)
           pure st
 
@@ -511,7 +525,7 @@ run App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
           st' <- _update rt msg env st
           pure (rt,st')
 
-        view :: Elm msg rt => env -> (rt,st) -> View
+        view :: Elm (Command msg rt) => env -> (rt,st) -> View
         view env (rt,st) = _view rt env st 
 
 type Settings settings = ?elm_application_settings :: settings
@@ -528,31 +542,15 @@ type Session session = ?elm_application_session :: session
 session :: Session session => session
 session = ?elm_application_session
 
-type Page env st msg rt = Elm msg rt => env -> st -> View
+type Page env st msg rt = Elm (Command msg rt) => env -> st -> View
 
 -- | Supply an environment and state to a context with access to an implicit
 -- environment and current state.
 {-# INLINE page #-}
-page :: (Elm msg rt => ((Session st,Settings env) => View)) -> Page env st msg rt
+page :: (Elm (Command msg rt) => ((Session st,Settings env) => View)) -> Page env st msg rt
 page f = \env st -> 
   let 
     ?elm_application_settings = env
     ?elm_application_session  = st
   in
     f
-
--- | Subscribe to any globally broadcast messages on the `msg'` channel by way of
--- re-wrapping for the correct `Elm msg rt` context.
-{-# INLINE subscribeWith #-}
-subscribeWith :: forall rt msg msg'. (Typeable msg', Typeable rt, Elm msg rt) => (msg' -> msg) -> IO (Subscription msg')
-subscribeWith f = Pure.Elm.Sub.unsafeSubscribeWith (?command . Message @msg @rt . f)
-
--- | Subscribe to any globally broadcast message on the `msg` channel by way of
--- injecting into a `Command msg rt`.
-{-# INLINE subscribe #-}
-subscribe :: forall rt msg. (Typeable msg, Typeable rt, Elm msg rt) => IO (Subscription msg)
-subscribe = Pure.Elm.Sub.unsafeSubscribeWith (?command . Message @msg @rt)
-
-{-# INLINE publishing #-}
-publishing :: forall rt msg a. (Typeable msg, Typeable rt) => (Elm msg rt => a) -> a
-publishing a = let ?command = Pure.Elm.Sub.publish' in a
