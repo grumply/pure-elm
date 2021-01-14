@@ -17,7 +17,7 @@ import Unsafe.Coerce
 
 import Data.Map as Map hiding ((\\))
 
-type Elm msg = (?command :: msg -> IO Bool)
+type Elm msg = (?command :: msg -> IO () -> IO Bool)
 
 data Subscription msg = Subscription Unique
 
@@ -50,10 +50,10 @@ unsafeSubscribeWith f = mdo
   pure (Subscription u)
 
 subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO (Subscription msg') 
-subscribeWith f = unsafeSubscribeWith (?command . f)
+subscribeWith f = unsafeSubscribeWith (\x -> ?command (f x) (pure ()))
 
 subscribe :: (Typeable msg, Elm msg) => IO (Subscription msg)
-subscribe = unsafeSubscribeWith ?command
+subscribe = unsafeSubscribeWith (\x -> ?command x (pure ()))
 
 publish :: Typeable msg => msg -> IO ()
 publish = void . publish'
@@ -87,7 +87,7 @@ publish' msg = do
               pure True
 
 publishing :: (Typeable msg) => (Elm msg => a) -> a
-publishing a = let ?command = publish' in a
+publishing a = let ?command = \m _ -> publish' m in a
 
 cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
 cleanBroker us = do

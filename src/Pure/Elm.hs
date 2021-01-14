@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash, 
    AllowAmbiguousTypes, PatternSynonyms #-}
-module Pure.Elm (App(..),pattern Applet,run,command,map,module Export,memo,omem) where
+module Pure.Elm (App(..),pattern Applet,run,command,commandWith,map,module Export,memo,omem) where
 
 import Pure as Export hiding (Home,update,view)
 import qualified Pure (view,update)
@@ -50,9 +50,9 @@ run App {..} = Component app . (Env @msg)
     app self =
       let
         {-# INLINE upd #-}
-        upd msg = modifyM self $ \env mdl -> do
+        upd msg after = modifyM self $ \env mdl -> do
             mdl' <- let ?command = upd in _update msg (coerce env) mdl
-            pure (mdl',pure ())
+            pure (mdl',after)
 
       in let 
         ?command = upd
@@ -86,7 +86,13 @@ run App {..} = Component app . (Env @msg)
 -- | Given a satisfied `Elm msg` constraint, send a command.
 {-# INLINE command #-}
 command :: Elm msg => msg -> IO ()
-command msg = void $ ?command msg
+command msg = commandWith msg (pure ())
+
+-- | Given a satisfied `Elm msg` constraint, send a command with an action
+-- to perform after evaluate of the command.
+{-# INLINE commandWith #-}
+commandWith :: Elm msg => msg -> IO () -> IO ()
+commandWith msg after = void $ ?command msg after
 
 -- | Map over an `Elm` constraint.
 {-# INLINE map #-}
