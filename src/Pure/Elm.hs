@@ -60,13 +60,10 @@ run App {..} = Component app . (Env @msg)
         {-# INLINE update #-}
         update env = go
           where
-            {-# NOINLINE go' #-}
-            go' = go
-            {-# INLINE go #-}
             go mdl [] = pure mdl
             go mdl (msg:msgs) = do
               mdl' <- _update msg env mdl
-              go' mdl' msgs
+              go mdl' msgs
       in 
         def 
           { construct = pure _model
