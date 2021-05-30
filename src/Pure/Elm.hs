@@ -22,7 +22,7 @@ data App env st msg = App
   { _startup  :: [msg]
   , _receive  :: [msg]
   , _shutdown :: [msg]
-  , _model    :: st
+  , _model    :: IO st
   , _update   :: !(Elm msg => msg -> env -> st -> IO st)
   , _view     :: !(Elm msg => env -> st -> View)
   }
@@ -66,7 +66,7 @@ run App {..} = Component app . (Env @msg)
               go mdl' msgs
       in 
         def 
-          { construct = pure _model
+          { construct = _model
           , executing = \mdl -> do
             env <- ask self
             update (coerce env) mdl _startup

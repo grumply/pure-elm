@@ -131,7 +131,7 @@ data App env st msg rt = App
   , _receive  :: [msg]
   , _route    :: [rt -> msg]
   , _shutdown :: [msg]
-  , _model    :: st
+  , _model    :: IO st
   , _update   :: !(Elm (Command msg rt) => rt -> msg -> env -> st -> IO st)
   , _view     :: !(Elm (Command msg rt) => rt -> env -> st -> View)
   }
@@ -496,7 +496,7 @@ runApp App {..} = \config -> Div <||> [ router, Pure.Elm.run app config ]
     router = View (Router (home :: rt) (Pure.Router.route routes))
 
     app :: Pure.Elm.App env (rt,st) (Command msg rt)
-    app = Pure.Elm.App (Startup:fmap Message _startup) (fmap Message _receive) (fmap Message _shutdown) (home :: rt,_model) update view
+    app = Pure.Elm.App (Startup:fmap Message _startup) (fmap Message _receive) (fmap Message _shutdown) (_model >>= \mdl -> pure (home :: rt,mdl)) update view
       where
         update :: Elm (Command msg rt) => Command msg rt -> env -> (rt,st) -> IO (rt,st)
         update Startup      _ st = do
