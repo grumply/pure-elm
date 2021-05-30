@@ -1,10 +1,10 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash, 
-   AllowAmbiguousTypes, PatternSynonyms #-}
-module Pure.Elm (App(..),pattern Applet,run,command,commandWith,map,module Export,memo,omem) where
+   AllowAmbiguousTypes, PatternSynonyms, ViewPatterns #-}
+module Pure.Elm (App(..),pattern Applet,run,command,commandWith,map,module Export,Pure.inline,memo,omem) where
 
-import Pure as Export hiding (Home,update,view)
-import qualified Pure (view,update)
+import Pure as Export hiding (Home,update,view,inline)
+import qualified Pure (view,update,inline)
 
 import Control.Concurrent (myThreadId,ThreadId)
 import Control.Monad
@@ -17,6 +17,7 @@ import Pure.Elm.Sub as Export
 import qualified Pure.Elm.Memo as Memo
 
 import Data.Coerce
+import GHC.Exts (inline)
 
 data App env st msg = App 
   { _startup  :: [msg]
@@ -45,13 +46,13 @@ pattern Applet s r d m u v = App s r d m u v
 -- | Turn an `App st msg` into a component with `msg` property.
 {-# INLINE run #-}
 run :: forall env st msg. (Typeable env, Typeable st, Typeable msg) => App env st msg -> env -> View
-run App {..} = Component app . (Env @msg)
+run (inline -> App {..}) = Component app . (Env @msg)
   where
     app self =
       let
         {-# INLINE upd #-}
         upd msg after = modifyM self $ \env mdl -> do
-            mdl' <- let ?command = upd in _update msg (coerce env) mdl
+            mdl' <- let ?command = upd in inline _update msg (coerce env) mdl
             pure (mdl',after)
 
       in let 
@@ -62,22 +63,22 @@ run App {..} = Component app . (Env @msg)
           where
             go mdl [] = pure mdl
             go mdl (msg:msgs) = do
-              mdl' <- _update msg env mdl
+              mdl' <- inline _update msg env mdl
               go mdl' msgs
       in 
         def 
-          { construct = _model
+          { construct = inline _model
           , executing = \mdl -> do
             env <- ask self
-            update (coerce env) mdl _startup
+            inline update (coerce env) mdl _startup
           , receive = \env mdl ->
-            update (coerce env) mdl _receive
+            inline update (coerce env) mdl _receive
           , unmounted = do
             env <- ask self
             mdl <- get self
-            update (coerce env) mdl _shutdown
+            inline update (coerce env) mdl _shutdown
             myThreadId >>= Memo.cleanupThreadStore
-          , render = _view . coerce
+          , render = inline _view . coerce
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
