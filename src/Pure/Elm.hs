@@ -24,8 +24,8 @@ data App env st msg = App
   , _receive  :: [msg]
   , _shutdown :: [msg]
   , _model    :: IO st
-  , _update   :: !(Elm msg => msg -> env -> st -> IO st)
-  , _view     :: !(Elm msg => env -> st -> View)
+  , _update   :: Elm msg => msg -> env -> st -> IO st
+  , _view     :: Elm msg => env -> st -> View
   }
 
 instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) where

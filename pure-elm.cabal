@@ -18,6 +18,7 @@ source-repository head
 library
   exposed-modules: Pure.Elm
                    Pure.Elm.Application
+                   Pure.Elm.Component
                    Pure.Elm.Memo
                    Pure.Elm.Sub
 
