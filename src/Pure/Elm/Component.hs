@@ -8,7 +8,7 @@ module Pure.Elm.Component
   ) where
 
 import qualified Pure (Pure(..))
-import Pure.Elm hiding (run,receive)
+import Pure.Elm hiding (run,receive,initialize)
 import qualified Pure.Elm as Pure
 
 import Data.Typeable ( Typeable, typeOf )
@@ -33,6 +33,9 @@ class Typeable (a :: *) => Component a where
   model :: Model a
   model = error ("No default model defined for " ++ show (typeOf (undefined :: a)))
 
+  initialize :: IO (Model a)
+  initialize = pure model
+
   upon :: Msg a -> Update a
   upon _ _ mdl = pure mdl
 
@@ -41,8 +44,10 @@ class Typeable (a :: *) => Component a where
  
   {-# INLINE app #-}
   app :: App a (Model a) (Msg a)
-  app = Applet startup receive shutdown (pure model) upon view 
+  app = Applet startup receive shutdown initialize upon view 
 
   {-# INLINE run #-}
   run :: a -> View
   run = Pure.run app 
+
+  {-# MINIMAL model | initialize #-}
