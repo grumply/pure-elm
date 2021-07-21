@@ -36,6 +36,7 @@ module Pure.Elm.Application
 
 import Pure as Export hiding (Home,update,view,url,link,initialize,receive)
 import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
+import Pure.Data.URI (encodeURI,decodeURI)
 import Pure.Elm hiding (App,url,link,run,initialize,receive)
 import qualified Pure.Elm
 import qualified Pure.Elm.Sub
@@ -154,7 +155,7 @@ class Typeable app => Application app where
 
         Route r -> \app mdl -> do
           storeScrollPosition
-          Pure.Router.goto (location r)
+          Pure.Router.goto (encodeURI (location r))
           pure mdl
 
         Routed r -> \app mdl -> do
@@ -189,7 +190,7 @@ class Typeable app => Application app where
 -- > forall rt. route routes (location rt) == Just rt
 --
 link :: (Typeable app, Application app, HasFeatures a) => Route app -> a -> a
-link rt a = OnClickWith intercept (\_ -> Pure.Elm.Sub.publish (Route rt)) (Href (location rt) a)
+link rt a = OnClickWith intercept (\_ -> Pure.Elm.Sub.publish (Route rt)) (Href (encodeURI (location rt)) a)
 
 -- | Command the application to retitle the page, from anywhere, without 
 -- requiring an `Elm (Msg app)` constraint.

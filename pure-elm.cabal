@@ -29,6 +29,7 @@ library
                        pure-lifted,
                        pure-router,
                        pure-txt,
+                       pure-uri,
                        containers,
                        stm,
                        hashable
