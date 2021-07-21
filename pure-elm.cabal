@@ -18,12 +18,15 @@ source-repository head
 library
   exposed-modules: Pure.Elm
                    Pure.Elm.Application
+                   Pure.Elm.Application.Route
+                   Pure.Elm.Application.Scroll
                    Pure.Elm.Component
                    Pure.Elm.Memo
                    Pure.Elm.Sub
 
   build-depends:       base,
                        pure,
+                       pure-lifted,
                        pure-router,
                        pure-txt,
                        containers,
