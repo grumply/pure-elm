@@ -38,6 +38,8 @@ class Typeable (a :: *) => Component a where
   model :: Model a
   model = error ("No default model defined for " ++ show (typeOf (undefined :: a)))
 
+  -- GHC doesn't let me do this, but it would be nice if GHC would emit this warning for any overriding implementation.
+  -- {-# WARNING initialize "Component.initialize is a render-blocking initialization method! Consider moving long-running and long-tail effects to a startup event." #-}
   initialize :: a -> IO (Model a)
   initialize _ = pure model
 

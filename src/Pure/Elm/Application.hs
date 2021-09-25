@@ -123,6 +123,8 @@ class Typeable app => Application app where
   model :: Model app
   model = error ("No default model defined for " ++ show (typeOf (undefined :: app)))
 
+  -- GHC doesn't let me do this, but it would be nice if GHC would emit this warning for any overriding implementation.
+  -- {-# WARNING initialize "Application.initialize is a render-blocking initialization method! Consider moving long-running and long-tail effects to a startup event." #-}
   initialize :: app -> IO (Model app)
   initialize _ = pure model
 
