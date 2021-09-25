@@ -3,7 +3,7 @@
      ScopedTypeVariables, CPP, ConstraintKinds, OverloadedStrings, 
      AllowAmbiguousTypes, TypeApplications, LambdaCase, PatternSynonyms,
      FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies,
-     LambdaCase, TypeFamilies
+     LambdaCase, TypeFamilies, UndecidableInstances
    #-}
 module Pure.Elm.Application 
   ( Application(..)
@@ -34,6 +34,7 @@ module Pure.Elm.Application
   , pattern Applet
   ) where
 
+import qualified Pure (Pure(..))
 import Pure as Export hiding (Home,update,view,url,link,initialize,receive)
 import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
 import Pure.Data.URI (encodeURI,decodeURI)

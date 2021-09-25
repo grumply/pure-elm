@@ -1,4 +1,4 @@
-{-# language TypeApplications, KindSignatures, ScopedTypeVariables, TypeFamilies, RankNTypes, ConstrainedClassMethods, FlexibleInstances #-}
+{-# language TypeApplications, KindSignatures, ScopedTypeVariables, TypeFamilies, RankNTypes, ConstrainedClassMethods, FlexibleInstances, UndecidableInstances #-}
 module Pure.Elm.Component 
   ( module Pure.Elm
   , Update
@@ -55,4 +55,5 @@ class Typeable (a :: *) => Component a where
   run :: a -> View
   run a = Pure.run (app a) a
 
-  {-# MINIMAL model | initialize #-}
+instance {-# OVERLAPPABLE #-} (Typeable a, Component a) => Pure.Pure a where
+  view = run
