@@ -38,7 +38,7 @@ import qualified Pure (Pure(..))
 import Pure as Export hiding (Home,update,view,url,link,initialize,receive)
 import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
 import Pure.Data.URI (encodeURI,decodeURI)
-import Pure.Elm hiding (App,url,link,run,initialize,receive)
+import Pure.Elm hiding (App,url,link,initialize,receive)
 import qualified Pure.Elm
 import qualified Pure.Elm.Sub
 import Pure.Router as Export hiding (route)
@@ -180,9 +180,9 @@ class Typeable app => Application app where
           , Pure.Elm.map Message (view (appRoute mdl) app (appModel mdl))
           ]
 
-  {-# INLINE run #-}
-  run :: app -> View
-  run a = Pure.Elm.run (app a) a
+  {-# INLINE execute #-}
+  execute :: app -> View
+  execute a = run (app a) a
 
   {-# MINIMAL home #-}
 
