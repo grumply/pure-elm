@@ -5,8 +5,8 @@ import Control.Concurrent
 import Control.Monad
 import Data.Foldable
 import Data.Hashable
-import Data.Map as Map
-import Data.IntMap as IntMap
+import Data.Map.Strict as Map
+import Data.IntMap.Strict as IntMap
 import Data.Typeable
 import System.Mem.StableName
 import System.IO.Unsafe
@@ -25,7 +25,7 @@ modifyThreadStore :: (ThreadStore -> IO (ThreadStore,b)) -> IO b
 modifyThreadStore f = do
   tid <- myThreadId
   ts  <- modifyMVar ledger (go tid)
-  !b  <- modifyMVar ts f
+  !b  <- modifyMVar ts (\ts -> f ts >>= \(ts',b) -> ts' `seq` pure (ts',b))
   pure b
   where
     go :: ThreadId -> IntMap (MVar ThreadStore) -> IO (IntMap (MVar ThreadStore),MVar ThreadStore)
@@ -33,7 +33,8 @@ modifyThreadStore f = do
       | Just ts <- IntMap.lookup htid ldgr = pure (ldgr,ts)
       | otherwise = do
         ts  <- newMVar Map.empty
-        pure (IntMap.insert htid ts ldgr,ts)
+        let ldgr' = IntMap.insert htid ts ldgr
+        ldgr' `seq` pure (ldgr',ts)
 
 withThreadStore :: (ThreadStore -> IO a) -> IO a
 withThreadStore f = modifyThreadStore $ \ts -> do
@@ -41,7 +42,7 @@ withThreadStore f = modifyThreadStore $ \ts -> do
   pure (ts,a)
 
 removeThreadStore :: Int -> IO ()
-removeThreadStore htid = modifyMVar_ ledger (pure . IntMap.delete htid)
+removeThreadStore htid = modifyMVar_ ledger (\l -> let l' = IntMap.delete htid l in l' `seq` pure l')
 
 lookupValue :: forall tag a b. (Typeable tag, Typeable a, Typeable b) => StableName a -> IO (Maybe b)
 lookupValue sna = let tag = typeOf (undefined :: tag) in
@@ -54,7 +55,9 @@ insertValue :: forall tag a b. (Typeable tag, Typeable a, Typeable b) => StableN
 insertValue sna b = modifyThreadStore insert
   where
     tag = typeOf (undefined :: tag)
-    insert ts = pure (Map.insert tag (Value sna b) ts,())
+    insert ts = 
+      let ts' = Map.insert tag (Value sna b) ts
+      in ts' `seq` pure (ts',())
 
 memo :: forall tag a b. (Typeable tag, Typeable a,Typeable b) => (a -> IO b) -> a -> IO b
 memo f a = do
@@ -69,4 +72,4 @@ memo f a = do
       pure b
 
 cleanupThreadStore :: ThreadId -> IO ()
-cleanupThreadStore tid = modifyMVar_ ledger (pure . IntMap.delete (hash tid))
+cleanupThreadStore tid = modifyMVar_ ledger (\l -> let l' = IntMap.delete (hash tid) l in l' `seq` pure l')
