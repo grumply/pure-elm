@@ -57,5 +57,5 @@ class Typeable (a :: *) => Component a where
   run :: a -> View
   run a = Pure.run (app a) a
 
-instance {-# OVERLAPPABLE #-} (Typeable a, Component a) => Pure.Pure a where
+instance {-# INCOHERENT #-} (Typeable a, Component a) => Pure.Pure a where
   view = run
