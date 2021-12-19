@@ -197,7 +197,7 @@ link rt a = OnClickWith intercept (\_ -> Pure.Elm.Sub.publish (Route rt)) (Href 
 
 -- | Command the application to retitle the page, from anywhere, without 
 -- requiring an `Elm (Msg app)` constraint.
-retitle :: forall app. Application app => Txt -> IO ()
+retitle :: forall app. Typeable app => Txt -> IO ()
 retitle = Pure.Elm.Sub.publish . Retitle @app
 
 -- | Command the application, from anywhere, without requiring an 
