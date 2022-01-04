@@ -57,5 +57,10 @@ class Typeable (a :: *) => Component a where
   run :: a -> View
   run a = Pure.run (app a) a
 
+-- This is a troublesome instance, but I think it is necessary. There should 
+-- not be two ways to render the same type. So, if you import 
+-- Pure.Elm.Component, this instance comes along and makes some type inference
+-- annoying and confusing; you'll end up seeing a missing Component instance
+-- rather than a missing Pure instance.
 instance {-# INCOHERENT #-} (Typeable a, Component a) => Pure.Pure a where
   view = run
