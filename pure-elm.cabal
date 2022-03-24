@@ -32,7 +32,8 @@ library
                        pure-uri,
                        containers,
                        stm,
-                       hashable
+                       hashable,
+                       reflection
 
   hs-source-dirs:      src
 

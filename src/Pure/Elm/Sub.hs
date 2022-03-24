@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes, RecursiveDo, ScopedTypeVariables,
-   ImplicitParams, ConstraintKinds, TypeApplications, RankNTypes #-}
+   ImplicitParams, ConstraintKinds, TypeApplications, RankNTypes,
+   FlexibleContexts, UndecidableInstances, TypeFamilies, 
+   FlexibleInstances #-}
 module Pure.Elm.Sub where
 
 import Control.Concurrent.STM
@@ -17,7 +19,14 @@ import Unsafe.Coerce
 
 import Data.Map as Map hiding ((\\))
 
-type Elm msg = (?command :: msg -> IO () -> IO Bool)
+import Data.Reflection
+
+newtype Dispatch message = Dispatch { _dispatch :: message -> IO () -> IO Bool }
+
+send :: forall message. Elm message => message -> IO () -> IO Bool
+send message after = let Dispatch dispatch = given in dispatch message after
+
+type Elm message = Given (Dispatch message)
 
 data Subscription msg = Subscription Unique
 
@@ -50,10 +59,10 @@ unsafeSubscribeWith f = mdo
   pure (Subscription u)
 
 subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO (Subscription msg') 
-subscribeWith f = unsafeSubscribeWith (\x -> ?command (f x) (pure ()))
+subscribeWith f = unsafeSubscribeWith (\x -> send (f x) (pure ()))
 
 subscribe :: (Typeable msg, Elm msg) => IO (Subscription msg)
-subscribe = unsafeSubscribeWith (\x -> ?command x (pure ()))
+subscribe = unsafeSubscribeWith (\x -> send x (pure ()))
 
 publish :: Typeable msg => msg -> IO ()
 publish = void . publish'
@@ -86,8 +95,8 @@ publish' msg = do
             _  -> 
               pure True
 
-publishing :: (Typeable msg) => (Elm msg => a) -> a
-publishing a = let ?command = \m _ -> publish' m in a
+publishing :: forall msg a. Typeable msg => (Elm msg => a) -> a
+publishing = give (Dispatch (\m after -> publish' (m :: msg) >> after >> pure True))
 
 cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
 cleanBroker us = do
@@ -100,5 +109,5 @@ cleanBroker us = do
         putTMVar broker (Map.insert tr (Right hs') b)
       _ -> putTMVar broker b
 
-unsubscribe :: forall msg. (Typeable msg, Elm msg) => Subscription msg -> IO ()
+unsubscribe :: forall msg s. (Typeable msg, Elm msg) => Subscription msg -> IO ()
 unsubscribe (Subscription u) = cleanBroker @msg [u] 

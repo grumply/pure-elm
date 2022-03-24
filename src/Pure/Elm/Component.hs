@@ -1,4 +1,4 @@
-{-# language TypeApplications, KindSignatures, ScopedTypeVariables, TypeFamilies, RankNTypes, ConstrainedClassMethods, FlexibleInstances, UndecidableInstances #-}
+{-# language TypeApplications, KindSignatures, ScopedTypeVariables, TypeFamilies, RankNTypes, ConstrainedClassMethods, FlexibleInstances, UndecidableInstances, FlexibleContexts #-}
 module Pure.Elm.Component 
   ( module Pure.Elm
   , Update

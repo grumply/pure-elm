@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, ConstraintKinds, RankNTypes, RecordWildCards,
    ScopedTypeVariables, TypeApplications, BangPatterns, MagicHash, 
-   AllowAmbiguousTypes, PatternSynonyms, ViewPatterns #-}
+   AllowAmbiguousTypes, PatternSynonyms, ViewPatterns,
+   FlexibleContexts #-}
 module Pure.Elm (App(..),pattern Applet,run,command,commandWith,map,module Export,Pure.inline,memo,omem) where
 
 import Pure as Export hiding (Home,update,view,inline)
@@ -15,6 +16,8 @@ import Prelude hiding (map)
 
 import Pure.Elm.Sub as Export
 import qualified Pure.Elm.Memo as Memo
+
+import Data.Reflection
 
 import Data.Coerce
 import GHC.Exts (inline)
@@ -33,7 +36,7 @@ instance (Typeable env, Typeable st, Typeable msg) => Default (App env st msg) w
     let 
       tr = typeOf (undefined :: App env st msg) 
       tm = typeOf (undefined :: st)
-     in
+    in
       App [] [] []
         (error $ "Pure.Elm.def: No default model supplied to " ++ show tr ++ " of type " ++ show tm) 
         (\_ _ -> pure) 
@@ -51,16 +54,16 @@ run (inline -> App {..}) = Component app . (Env @msg)
     app self =
       let
         {-# INLINE upd #-}
+        upd :: msg -> IO () -> IO Bool
         upd msg after = modifyM self $ \env mdl -> do
-            mdl' <- let ?command = upd in inline _update msg (coerce env) mdl
+            mdl' <- give (Dispatch upd) (inline _update msg (coerce env) mdl)
             pure (mdl',after)
 
-      in let 
-        ?command = upd
-      in let
         {-# INLINE update #-}
-        update env = go
+        update :: env -> st -> [msg] -> IO st
+        update env mdl msgs = give (Dispatch upd) (go mdl msgs)
           where
+            go :: Elm msg => st -> [msg] -> IO st
             go mdl [] = pure mdl
             go mdl (msg:msgs) = do
               mdl' <- inline _update msg env mdl
@@ -78,7 +81,7 @@ run (inline -> App {..}) = Component app . (Env @msg)
             mdl <- get self
             inline update (coerce env) mdl _shutdown
             myThreadId >>= Memo.cleanupThreadStore
-          , render = inline _view . coerce
+          , render = give (Dispatch upd) (inline _view . coerce)
           }
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
@@ -90,15 +93,17 @@ command msg = commandWith msg (pure ())
 -- to perform after evaluate of the command.
 {-# INLINE commandWith #-}
 commandWith :: Elm msg => msg -> IO () -> IO ()
-commandWith msg after = void $ ?command msg after
+commandWith msg after = void (send msg after)
 
 -- | Map over an `Elm` constraint.
 {-# INLINE map #-}
-map :: (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
-map f a = 
-  let g = ?command
-   in let ?command = g . f
-       in a
+map :: forall msg msg' a. (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
+map f = 
+  let
+    Dispatch sendMsg' = given
+    disp = Dispatch (\m g -> sendMsg' (f m) g)
+  in
+    give disp 
 
 {-# INLINE memo #-}
 memo :: forall tag a b msg. (Typeable tag,Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()

@@ -3,7 +3,7 @@
      ScopedTypeVariables, CPP, ConstraintKinds, OverloadedStrings, 
      AllowAmbiguousTypes, TypeApplications, LambdaCase, PatternSynonyms,
      FlexibleInstances, MultiParamTypeClasses, FunctionalDependencies,
-     LambdaCase, TypeFamilies, UndecidableInstances
+     LambdaCase, TypeFamilies, UndecidableInstances, FlexibleContexts
    #-}
 module Pure.Elm.Application 
   ( Application(..)
@@ -136,7 +136,7 @@ class Typeable app => Application app where
 
   view :: Route app -> app -> Render app
   view _ _ _ = Null
- 
+
   {-# INLINE app #-}
   app :: app -> Pure.Elm.App app (AppModel app) (AppMsg app)
   app a = Applet (Startup : fmap Message startup) (fmap Message receive) (fmap Message shutdown) model' upon' view'
@@ -146,13 +146,13 @@ class Typeable app => Application app where
       upon' :: Elm (AppMsg app) => AppMsg app -> app -> AppModel app -> IO (AppModel app)
       upon' = \case
         Startup -> \app mdl -> do
-          subscribe
+          subscribe @(AppMsg app)
           setManualScrollRestoration
-          Pure.Router.onRoute' (command . Routed)
+          Pure.Router.onRoute' (command . Routed @app)
           pure mdl
 
         Message m -> \app mdl -> do
-          mdl' <- Pure.Elm.map Message (upon m (appRoute mdl) app (appModel mdl))
+          mdl' <- Pure.Elm.map @(Msg app) @(AppMsg app) Message (upon m (appRoute mdl) app (appModel mdl))
           pure mdl
             { appModel = mdl' }
 
@@ -162,7 +162,7 @@ class Typeable app => Application app where
           pure mdl
 
         Routed r -> \app mdl -> do
-          mdl' <- Pure.Elm.map Message (route r (appRoute mdl) app (appModel mdl))
+          mdl' <- Pure.Elm.map @(Msg app) @(AppMsg app) Message (route r (appRoute mdl) app (appModel mdl))
           for_ (title r) setTitle
           pure mdl
             { appRoute = r
@@ -177,7 +177,7 @@ class Typeable app => Application app where
       view' app mdl =
         Div <||>
           [ View (Pure.Router.Router (home @app) (Pure.Router.route routes))
-          , Pure.Elm.map Message (view (appRoute mdl) app (appModel mdl))
+          , Pure.Elm.map @(Msg app) @(AppMsg app) Message (view (appRoute mdl) app (appModel mdl))
           ]
 
   {-# INLINE execute #-}
