@@ -19,14 +19,18 @@ import Unsafe.Coerce
 
 import Data.Map as Map hiding ((\\))
 
-import Data.Reflection
+class Elm a where
+  send :: a -> IO () -> IO Bool
 
-newtype Dispatch message = Dispatch { _dispatch :: message -> IO () -> IO Bool }
+data Sender a b = Sender (Elm a => Proxy a -> b)
 
-send :: forall message. Elm message => message -> IO () -> IO Bool
-send message after = let Dispatch dispatch = given in dispatch message after
+withSender :: (Elm a => Proxy a -> b) -> (a -> IO () -> IO Bool) -> Proxy a -> b
+withSender f x y = magicDict (Sender f) x y
+{-# INLINE withSender #-}
 
-type Elm message = Given (Dispatch message)
+sender :: forall a r. (a -> IO () -> IO Bool) -> (Elm a => r) -> r
+sender a k = withSender (\_ -> k) a Proxy
+{-# INLINE sender #-}
 
 data Subscription msg = Subscription Unique
 
@@ -96,7 +100,7 @@ publish' msg = do
               pure True
 
 publishing :: forall msg a. Typeable msg => (Elm msg => a) -> a
-publishing = give (Dispatch (\m after -> publish' (m :: msg) >> after >> pure True))
+publishing = sender (\m after -> publish' (m :: msg) >> after >> pure True)
 
 cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
 cleanBroker us = do

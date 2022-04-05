@@ -26,21 +26,21 @@ class Typeable (a :: *) => Component a where
   data Model a
   data Msg a
  
-  startup :: [Msg a]
+  startup :: Elm (Msg a) => [Msg a]
   startup = []
 
-  receive :: [Msg a]
+  receive :: Elm (Msg a) => [Msg a]
   receive = []
 
-  shutdown :: [Msg a]
+  shutdown :: Elm (Msg a) => [Msg a]
   shutdown = []
 
-  model :: Model a
+  model :: Elm (Msg a) => Model a
   model = error ("No default model defined for " ++ show (typeOf (undefined :: a)))
 
   -- GHC doesn't let me do this, but it would be nice if GHC would emit this warning for any overriding implementation.
   -- {-# WARNING initialize "Component.initialize is a render-blocking initialization method! Consider moving long-running and long-tail effects to a startup event." #-}
-  initialize :: a -> IO (Model a)
+  initialize :: Elm (Msg a) => a -> IO (Model a)
   initialize _ = pure model
 
   upon :: Msg a -> Update a
