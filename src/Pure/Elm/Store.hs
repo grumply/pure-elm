@@ -1,5 +1,5 @@
 {-# language FlexibleContexts, ScopedTypeVariables, Rank2Types, ConstraintKinds, BlockArguments, TupleSections, BangPatterns #-}
-module Pure.Elm.Store (Store,State,store,storeIO,substore,get,put,updateWith_,updateWith,updateWithM_,updateWithM,update_,update,updateM_,updateM,use,react,Has,using,it) where
+module Pure.Elm.Store (Store,State,store,storeIO,substore,substoreIO,get,put,updateWith_,updateWith,updateWithM_,updateWithM,update_,update,updateM_,updateM,use,react,Has,using,it) where
 
 import Pure.Elm.Fold hiding (get,use,using)
 import Pure.Elm.Has 
@@ -17,14 +17,17 @@ import Prelude hiding (read)
 
 type Store a = MVar (a,[IORef (a -> IO ())])
 
-store :: a -> Store a
-store x = noinline $ unsafePerformIO $ newMVar (x,[])
+store :: IO a -> Store a
+store ioa = noinline $ unsafePerformIO $ storeIO ioa
 
-storeIO :: IO a -> Store a
-storeIO f = noinline $ unsafePerformIO $ f >>= \x -> x `seq` newMVar (x,[])
+storeIO :: IO a -> IO (Store a)
+storeIO ioa = ioa >>= \a -> newMVar (a,[])
 
 substore :: Store a -> (a -> IO b) -> Store b
-substore s f = noinline $ unsafePerformIO $ do
+substore s f = noinline $ unsafePerformIO $ substoreIO s f
+
+substoreIO :: Store a -> (a -> IO b) -> IO (Store b)
+substoreIO s f = do
   b  <- using s (get >>= f)
   mv <- newMVar (b,[])
   f_ <- newIORef undefined
