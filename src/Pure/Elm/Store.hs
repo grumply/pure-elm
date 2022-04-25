@@ -1,7 +1,7 @@
 {-# language FlexibleContexts, ScopedTypeVariables, Rank2Types, ConstraintKinds, BlockArguments, TupleSections, BangPatterns #-}
 module Pure.Elm.Store (Store,State,store,storeIO,substore,substoreIO,get,put,updateWith_,updateWith,updateWithM_,updateWithM,update_,update,updateM_,updateM,use,react,Has,using,it) where
 
-import Pure.Elm.Fold hiding (get,use,using)
+import Pure.Elm.Fold hiding (get,use,using,State)
 import Pure.Elm.Has 
 
 import Control.Concurrent

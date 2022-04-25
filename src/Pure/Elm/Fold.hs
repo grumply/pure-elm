@@ -1,10 +1,14 @@
-{-# language TypeFamilies, OverloadedStrings, FlexibleContexts, PartialTypeSignatures, ScopedTypeVariables, TypeApplications, RankNTypes, PartialTypeSignatures, InstanceSigs, AllowAmbiguousTypes #-}
-module Pure.Elm.Fold (fold,foldM,module Pure.Elm.Component,module Pure.Elm.Has) where
+{-# language TypeFamilies, OverloadedStrings, FlexibleContexts, PartialTypeSignatures, ScopedTypeVariables, TypeApplications, RankNTypes, PartialTypeSignatures, InstanceSigs, AllowAmbiguousTypes, ConstraintKinds, DataKinds #-}
+module Pure.Elm.Fold (fold,foldM,Producer,yield,Consumer,await,call,module Pure.Elm.Component,module Pure.Elm.Has,call,Cont,shift,reset) where
 
+import Pure (Pure(..))
 import Pure.Elm.Has
 import qualified Pure.Elm
-import Pure.Elm.Component hiding (using,Left,Right)
+import Pure.Elm.Component hiding (using,shift,state,Left,Right,Shift)
+import Data.Kind
 import Data.Typeable
+
+import System.IO.Unsafe
 
 {-# INLINE fold #-}
 fold :: (Typeable msg, Typeable a) => (Elm msg => msg -> a -> a) -> (Elm msg => a) -> ((Has a, Elm msg) => View) -> View
@@ -37,38 +41,32 @@ instance (Typeable msg, Typeable a) => Component (Fold msg a) where
   view :: Fold msg a -> Render (Fold msg a)
   view (Fold _ _ v) (Model (a,_)) = using a (Pure.Elm.map (Message :: msg -> Msg (Fold msg a)) v)
 
-{-# INLINE CONLIKE combine #-}
-combine :: forall msg_a msg_b a b. Fold msg_a a -> ((Has a, Elm msg_a) => Fold msg_b b) -> Fold (Either msg_a msg_b) (a,b)
-combine (Fold on_msg_a initialize_a _) f = Fold on_msg_a_b initialize_a_b view_a_b
-    where
-      on_msg_a_b :: Elm (Either msg_a msg_b) => Either msg_a msg_b -> (a,b) -> IO (a,b)
-      on_msg_a_b (Left msg_a) (a,b) = do
-        a' <- Pure.Elm.map (Left :: msg_a -> Either msg_a msg_b) on_msg_a msg_a a
-        pure (a',b)
-      on_msg_a_b (Right msg_b) (a,b) = do
-        let Fold on_msg_b _ _ = using a (Pure.Elm.map (Left :: msg_a -> Either msg_a msg_b) f)
-        b' <- Pure.Elm.map (Right :: msg_b -> Either msg_a msg_b) on_msg_b msg_b b
-        pure (a,b')
 
-      initialize_a_b :: Elm (Either msg_a msg_b) => IO ((a,b),IO ())
-      initialize_a_b = do
-        (a,after_a) <- Pure.Elm.map (Left :: msg_a -> Either msg_a msg_b) initialize_a
-        let Fold _ initialize_b _ = using a (Pure.Elm.map (Left :: msg_a -> Either msg_a msg_b) f)
-        (b,after_b) <- Pure.Elm.map (Right :: msg_b -> Either msg_a msg_b) initialize_b
-        pure ((a,b),after_a >> after_b)
-      
-      view_a_b :: (Has (a,b), Elm (Either msg_a msg_b)) => View 
-      view_a_b =
-        let (a,b) = it @(a,b)
-            Fold _ _ view_b = using a (Pure.Elm.map (Left :: msg_a -> Either msg_a msg_b) f)
-         in using b (Pure.Elm.map (Right :: msg_b -> Either msg_a msg_b) view_b)
+newtype Yield a = Yield a
+yield :: Elm (Yield a) => a -> IO ()
+yield = command . Yield
 
--- This isn't generally possible since we can't pattern match on lambdas, but
--- since we can abstract over arguments with `Has`, we can hide the lambda in
--- the type system! Neat, if it works!
-{-# RULES
-   "foldM/foldM" forall step_a initialize_a step_b initialize_b view_b.
-     foldM step_a initialize_a (foldM step_b initialize_b view_b) =
-       let Fold step_a_b initialize_a_b view_a_b = combine (Fold step_a initialize_a Null) (Fold step_b initialize_b view_b)
-        in foldM step_a_b initialize_a_b view_a_b
-   #-}
+newtype Await a = Await a
+await :: Has (Await a) => a
+await = let Await a = it in a
+
+type Producer a = Elm (Yield a) => View
+type Consumer a = Has (Await a) => View
+
+call :: forall a. Typeable a => Producer a -> Consumer a -> View
+call v f = fold (\(Yield (a :: a)) _ -> using (Await a) f) v it
+
+newtype Shift = Shift View
+
+type Cont = Elm Shift
+
+shift :: Cont => View -> IO () 
+shift v = command (Shift v)
+
+reset :: (Cont => View) -> View
+reset v = fold (\(Shift v) (b,_) -> (Prelude.not b,v)) (False,v) $ do
+  let (b,u) = it
+  if b 
+    then Tagged @True u
+    else Tagged @False u
+    
