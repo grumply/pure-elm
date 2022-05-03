@@ -1,27 +1,29 @@
-{-# language RankNTypes, ConstraintKinds, FlexibleContexts #-}
-module Pure.Elm.Has (Has(..), using, loop, continue) where
+{-# language RankNTypes, ConstraintKinds, FlexibleContexts, ScopedTypeVariables #-}
+module Pure.Elm.Has (Has(..), using, rec, self) where
 
 import Data.Function (fix)
 import Data.Proxy
-import GHC.Exts
+import Unsafe.Coerce
 
 class Has a where
   it :: a
 
-data Reading a b = Reading (Has a => Proxy a -> b)
+newtype Reading a b = Reading (Has a => b)
 
-with_ :: (Has a => Proxy a -> b) -> a -> Proxy a -> b
-with_ f a p = magicDict (Reading f) a p
+with_ :: forall a b. (Has a => b) -> a -> b
+with_ b a = unsafeCoerce (Reading b :: Reading a b) a
 {-# INLINE with_ #-}
 
 using :: forall a r. a -> (Has a => r) -> r
 using a k = with_ (\_ -> k) a Proxy
 {-# INLINE using #-}
 
-type Continue b c = Has (b -> c) 
+data Fixed a = Fixed a
+type Rec a = Has (Fixed a)
 
-continue :: Has (b -> c) => b -> c
-continue = it
+self :: Rec a => a
+self = let Fixed a = it in a
 
-loop :: b -> (Has (b -> c) => b -> c) -> c
-loop b f = flip fix b (\k b -> using k (f b))
+rec :: (Rec a => a) -> a
+rec a = fix (\self -> using (Fixed self) a) 
+
