@@ -106,15 +106,15 @@ use = ($ it)
 react :: forall a. Typeable a => Store a -> (a -> IO ()) -> (State a => View) -> View
 react w f g = foldM (\a _ -> f a >> pure a) initialize (using w g)
   where
-    initialize :: Elm a => IO (a,IO())
+    initialize :: Elm a => IO (a,a -> IO())
     initialize = do
       f_ <- newIORef undefined
       let remove = modifyMVar_ w (\(a,fs) -> pure (a,filter (/= f_) fs))
       writeIORef f_ $ \x ->do
-        alive <- send x (pure ())
+        alive <- effect x (pure ())
         unless alive remove
       a <- modifyMVar w (\(x,fs) -> pure ((x,fs ++ [f_]),x))
       f a
-      pure (a,remove)
+      pure (a,const remove)
 {-# INLINE react #-}
 

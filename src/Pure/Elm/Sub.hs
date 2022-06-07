@@ -1,8 +1,10 @@
 {-# LANGUAGE AllowAmbiguousTypes, RecursiveDo, ScopedTypeVariables,
    ImplicitParams, ConstraintKinds, TypeApplications, RankNTypes,
    FlexibleContexts, UndecidableInstances, TypeFamilies, 
-   FlexibleInstances #-}
+   FlexibleInstances, PatternSynonyms #-}
 module Pure.Elm.Sub where
+
+import Pure.Elm.Has
 
 import Control.Concurrent.STM
 import Control.Monad
@@ -19,18 +21,26 @@ import Unsafe.Coerce
 
 import Data.Map as Map hiding ((\\))
 
-class Elm a where
-  send :: a -> IO () -> IO Bool
+-- backwards compatibility
+type Elm msg = Effect msg
 
-data Sender a b = Sender (Elm a => Proxy a -> b)
+type Effect eff = Has (eff -> IO () -> IO Bool)
 
-withSender :: (Elm a => Proxy a -> b) -> (a -> IO () -> IO Bool) -> Proxy a -> b
-withSender f x y = magicDict (Sender f) x y
-{-# INLINE withSender #-}
+{-# INLINE send #-}
+send :: Effect eff => eff -> IO () -> IO Bool
+send = it
 
-sender :: forall a r. (a -> IO () -> IO Bool) -> (Elm a => r) -> r
-sender a k = withSender (\_ -> k) a Proxy
-{-# INLINE sender #-}
+{-# INLINE effect #-}
+effect :: Effect eff => eff -> IO () -> IO Bool
+effect = it
+
+{-# INLINE effect' #-}
+effect' :: Effect eff => eff -> IO ()
+effect' eff = void (effect eff (pure ()))
+
+{-# INLINE map #-}
+map :: forall msg msg' a. (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
+map f a = using (\m io -> effect (f m) io) a
 
 data Subscription msg = Subscription Unique
 
@@ -63,10 +73,10 @@ unsafeSubscribeWith f = mdo
   pure (Subscription u)
 
 subscribeWith :: (Typeable msg', Elm msg) => (msg' -> msg) -> IO (Subscription msg') 
-subscribeWith f = unsafeSubscribeWith (\x -> send (f x) (pure ()))
+subscribeWith f = unsafeSubscribeWith (\x -> effect (f x) (pure ()))
 
 subscribe :: (Typeable msg, Elm msg) => IO (Subscription msg)
-subscribe = unsafeSubscribeWith (\x -> send x (pure ()))
+subscribe = unsafeSubscribeWith (\x -> effect x (pure ()))
 
 publish :: Typeable msg => msg -> IO ()
 publish = void . publish'
@@ -100,7 +110,7 @@ publish' msg = do
               pure True
 
 publishing :: forall msg a. Typeable msg => (Elm msg => a) -> a
-publishing = sender (\m after -> publish' (m :: msg) >> after >> pure True)
+publishing a = using (\(m :: msg) (after :: IO ()) -> publish' m >> after >> pure True) a
 
 cleanBroker :: forall msg. Typeable msg => [Unique] -> IO ()
 cleanBroker us = do

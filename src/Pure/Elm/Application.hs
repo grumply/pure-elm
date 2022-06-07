@@ -40,7 +40,7 @@ import Pure.Data.Txt as Txt (uncons,null,isPrefixOf)
 import Pure.Data.URI (encodeURI,decodeURI)
 import Pure.Elm hiding (App,url,link,initialize,receive)
 import qualified Pure.Elm
-import qualified Pure.Elm.Sub
+import qualified Pure.Elm.Sub hiding (map)
 import Pure.Router as Export hiding (route)
 import qualified Pure.Router
 

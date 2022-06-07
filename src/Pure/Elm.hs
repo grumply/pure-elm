@@ -14,11 +14,15 @@ import Data.Typeable
 
 import Prelude hiding (map)
 
+import Pure.Elm.Has as Has
 import Pure.Elm.Sub as Export
 import qualified Pure.Elm.Memo as Memo
 
 import Data.Coerce
 import GHC.Exts (inline)
+
+import Data.IORef
+import System.IO.Unsafe
 
 data App env st msg = App 
   { _startup  :: Elm msg => [msg]
@@ -54,10 +58,10 @@ run (inline -> App {..}) = Component app . (Env @msg)
         {-# INLINE upd #-}
         upd :: msg -> IO () -> IO Bool
         upd msg after = modifyM self $ \env mdl -> do
-          mdl' <- sender upd (inline _update msg (coerce env) mdl)
+          mdl' <- Has.using upd (inline _update msg (coerce env) mdl)
           pure (mdl',after)
       in
-        sender upd $
+        Has.using upd $
           let
             {-# INLINE update #-}
             update :: env -> st -> [msg] -> IO st
@@ -86,19 +90,14 @@ run (inline -> App {..}) = Component app . (Env @msg)
 
 -- | Given a satisfied `Elm msg` constraint, send a command.
 {-# INLINE command #-}
-command :: Elm msg => msg -> IO ()
+command :: Effect msg => msg -> IO ()
 command msg = commandWith msg (pure ())
 
 -- | Given a satisfied `Elm msg` constraint, send a command with an action
 -- to perform after evaluate of the command.
 {-# INLINE commandWith #-}
-commandWith :: Elm msg => msg -> IO () -> IO ()
-commandWith msg after = void (send msg after)
-
--- | Map over an `Elm` constraint.
-{-# INLINE map #-}
-map :: forall msg msg' a. (msg -> msg') -> (Elm msg => a) -> (Elm msg' => a)
-map f = let send' m g = send (f m) g in sender send' 
+commandWith :: Effect msg => msg -> IO () -> IO ()
+commandWith msg after = void (effect msg after)
 
 {-# INLINE memo #-}
 memo :: forall tag a b msg. (Typeable tag,Typeable a, Typeable b, Elm msg) => (b -> msg) -> (a -> IO b) -> a -> IO ()

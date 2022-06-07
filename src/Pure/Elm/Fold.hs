@@ -1,56 +1,57 @@
-{-# language TypeFamilies, OverloadedStrings, FlexibleContexts, PartialTypeSignatures, ScopedTypeVariables, TypeApplications, RankNTypes, PartialTypeSignatures, InstanceSigs, AllowAmbiguousTypes, ConstraintKinds, DataKinds, GADTs, BangPatterns, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, LiberalTypeSynonyms #-}
-module Pure.Elm.Fold (fold,foldM,module Pure.Elm.Component,module Pure.Elm.Has,Cont,shift,reset,Reader,ask,reader,env,Writer,tell,listen,writer,translate,State,modify,put,get,state,zoom,Error,throw,catch,pass,Producer,yield,(#),Pool,Thread,pool,fork,call,exec,stack,eval) where
+{-# language TypeFamilies, OverloadedStrings, FlexibleContexts, PartialTypeSignatures, ScopedTypeVariables, TypeApplications, RankNTypes, PartialTypeSignatures, InstanceSigs, AllowAmbiguousTypes, ConstraintKinds, DataKinds, GADTs, BangPatterns, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, LiberalTypeSynonyms, PatternSynonyms, LambdaCase #-}
+module Pure.Elm.Fold (fold,foldM,module Pure.Elm.Component,module Pure.Elm.Has,Reader,ask,reader,local,Writer,Listener,tell,listen,writer,translate,State,Modify,modify,put,get,state,state',stateIO,stateIO',stateIOWith,stateIOWith',zoom,async,Error,throw,catch,pass,Producer,yield,(#),stream,call,(<<-),(->>),exec,constant,worker,every,every',supply) where
 
 import Pure (Pure(..))
 import Pure.Elm.Has
 import qualified Pure.Elm
-import Pure.Elm.Component hiding (using,shift,state,Left,Right,Shift,modify,ask,get,put,self,zoom,translate,(#))
+import Pure.Elm.Component hiding (using,shift,state,Left,Right,Shift,modify,ask,get,put,self,zoom,translate,(#),static,Static,Start)
 
-import Control.Concurrent (MVar,newEmptyMVar,putMVar,takeMVar)
+import Control.Concurrent (MVar,newEmptyMVar,putMVar,takeMVar,forkIO,killThread,ThreadId)
+import qualified Control.Exception as E (catch,mask,AsyncException(ThreadKilled))
+import Control.Monad (forever)
+import Data.IORef
 import Data.Kind
 import Data.Typeable
 import Data.Unique (Unique,newUnique,hashUnique)
-
-import System.IO.Unsafe
-
-import Control.Category
 import Prelude hiding (Read,(.),id)
 
-import Unsafe.Coerce
 import System.IO.Unsafe
+import Unsafe.Coerce
 
 import Debug.Trace
 
 {-# INLINE fold #-}
-fold :: (Typeable msg, Typeable a) => (Elm msg => msg -> a -> a) -> (Elm msg => a) -> ((Has a, Elm msg) => View) -> View
-fold step initial v = foldM (\msg a -> pure (step msg a)) (pure (initial,pure ())) v
+fold :: (Typeable eff, Typeable a) => (Effect eff => eff -> a -> a) -> (Effect eff => a) -> ((Reader a, Effect eff) => View) -> View
+fold step initial v = foldM (\eff a -> pure (step eff a)) (pure (initial,\_ -> pure ())) v
 
-{-# INLINE [1] foldM #-}
-foldM :: (Typeable msg, Typeable a) => (Elm msg => msg -> a -> IO a) -> (Elm msg => IO (a,IO ())) -> ((Has a, Elm msg) => View) -> View
-foldM step initial v = run (Fold step initial v)
+{-# INLINE foldM #-}
+foldM :: forall eff a. (Typeable eff, Typeable a) => (Effect eff => eff -> a -> IO a) -> (Effect eff => IO (a,a -> IO ())) -> ((Reader a, Effect eff) => View) -> View
+foldM step initial v = run (Fold (Pure.Elm.map (Eff :: eff -> Msg (Fold eff a)) step) (Pure.Elm.map (Eff :: eff -> Msg (Fold eff a)) initial) (\a -> using a (Pure.Elm.map (Eff :: eff -> Msg (Fold eff a)) v)))
 
-data Fold msg a = Fold (Elm msg => msg -> a -> IO a) (Elm msg => IO (a,IO ())) ((Has a, Elm msg) => View)
+data Fold eff a = Fold (Effect (Msg (Fold eff a)) => eff -> a -> IO a) (Effect (Msg (Fold eff a)) => IO (a,a -> IO ())) (Effect (Msg (Fold eff a)) => a -> View)
 
-instance (Typeable msg, Typeable a) => Component (Fold msg a) where
-  data Model (Fold msg a) = Model (a,IO())
+instance (Typeable eff, Typeable a) => Component (Fold eff a) where
+  data Model (Fold eff a) = Model a (a -> IO())
 
-  initialize :: Elm (Msg (Fold msg a)) => Fold msg a -> IO (Model (Fold msg a))
-  initialize (Fold _ initial _) = Model <$> Pure.Elm.map (Message :: msg -> Msg (Fold msg a)) initial
+  {-# INLINE initialize #-}
+  initialize (Fold _ initial _) = do
+    (a,stop) <- initial
+    pure (Model a stop)
 
-  data Msg (Fold msg a) = Message msg | Shutdown
+  data Msg (Fold eff a) = Eff eff | Shutdown
 
   shutdown = [Shutdown]
 
-  upon :: Msg (Fold msg a) -> Update (Fold msg a)
-  upon (Message msg) (Fold step _ _) (Model (a,s)) = do
-    a' <- Pure.Elm.map (Message :: msg -> Msg (Fold msg a)) step msg a
-    pure (Model (a',s))
-  upon Shutdown _ mdl@(Model (_,shutdown)) = do
-    shutdown 
+  {-# INLINE upon #-}
+  upon (Eff eff) (Fold step _ _) (Model a s) = do
+    a' <- step eff a
+    pure (Model a' s)
+  upon Shutdown _ mdl@(Model a shutdown) = do
+    shutdown a
     pure mdl
 
-  view :: Fold msg a -> Render (Fold msg a)
-  view (Fold _ _ v) (Model (a,_)) = using a (Pure.Elm.map (Message :: msg -> Msg (Fold msg a)) v)
+  {-# INLINE view #-}
+  view (Fold _ _ v) (Model a _) = v a
 
 {- I wanted this to work, but I couldn't get constraint satisfaction to happen
     during/before `do` desugaring.  That is:
@@ -87,143 +88,198 @@ return = pure
 liftA2 f va vb = call va (\a -> call vb (\b -> pure (f a b)))
 -}
 
-data Void
+{-# INLINE constant #-}
+constant :: View -> View
+constant v = fold (\() v -> v) v it
 
-data Fork = Fork Unique View | Return Unique
+type Producer a = Effect a
 
-type Pool = Elm Fork
-
-join :: Pool => Unique -> IO ()
-join = command . Return
-
-pool :: ([(Int,View)] -> View) -> (Pool => View) -> View
-pool f v = fold update [((-1),v)] (f it)
-  where
-    update (Fork u v) ts = trace "Fork" ((hashUnique u,v):ts)
-    update (Return u) ((t,_):ts)
-      | hashUnique u == t = trace "Return" ts
-      | otherwise = trace "killed a thread" $ update (Return u) ts 
-    update _ _ = 
-      error "Invariant broken: thread not found"
-
-data Stack
-instance Theme Stack where
-  theme c =
-    is c $ do
-      child "*:not(:first-child)" $ do
-        display =: none
-
-stack :: (Pool => View) -> View
-stack = pool (\xs -> Keyed Div <| Themed @Stack |#> xs)
-
-type Thread a = Producer a => View
-
-trivial :: (Elm () => View) -> View
-trivial = fold (\() () -> ()) ()
-
-fork :: forall a. Pool => Thread a -> IO a
-fork producer = do
-  mv <- newEmptyMVar
-  u <- newUnique
-  command (Fork u (trivial $ Pure.Elm.map @(Produce a) @() (\(Produce a) -> let !_ = unsafePerformIO (command (Return u) >> putMVar mv a) in ()) producer))
-  takeMVar mv
-
-eval :: Pool => (Producer a => View) -> a
-eval = unsafePerformIO . fork
-
-data Produce a = Produce a
-type Producer a = Elm (Produce a)
+{-# INLINE yield #-}
 yield :: Producer a => a -> IO ()
-yield = command . Produce
+yield = effect'
 
+{-# INLINE (#) #-}
 infixr 0 #
 (#) :: (a -> b) -> (Producer a => x) -> (Producer b => x)
-(#) f v = Pure.Elm.map (\(Produce b) -> Produce (f b)) v
+(#) = Pure.Elm.map
 
+{-# INLINE stream #-}
+stream :: Typeable a => (Producer a => View) -> (a -> IO ()) -> View
+stream v f = foldM (\a _ -> f a) def v
+
+{-# INLINE call #-}
 call :: forall a. Typeable a => (Producer a => View) -> (a -> View) -> View
-call v f = fold (\(Produce a) _ -> (f a,True)) (v,False) 
-  -- prevent sharing by forcing a full build with Tagged
-  (let (v,b) = it in if b then Tagged @True v else Tagged @False v)
+call v f = eager (\(WithDict v) -> fold step initial (maybe v f it)) (WithDict @(Producer a) v) 
+  where
+    initial :: Maybe a
+    initial = Nothing
+
+    step :: a -> Maybe a -> Maybe a
+    step a _ = Just a
+
+infixr 0 <<-
+{-# INLINE (<<-) #-}
+(<<-) :: Typeable a => (a -> View) -> (Producer a => View) -> View
+(<<-) f v = call v f
+
+{-# INLINE (->>) #-}
+infixl 1 ->>
+(->>) :: Typeable a => (Producer a => View) -> (a -> View) -> View
+(->>) v f = call v f
 
 exec :: IO a -> (Producer a => View)
-exec f = foldM (\() _ -> f >>= yield >> pure ()) (command () >> pure ((),pure ())) Null
+exec f = let x = unsafePerformIO (f >>= yield) in x `seq` Null
 
-data Shift = Shift View
+type Reader a = Has a
 
-type Cont = Elm Shift
-
-shift :: Cont => View -> IO () 
-shift v = command (Shift v)
-
-reset :: (Cont => View) -> View
-reset v = fold (\(Shift v) (b,_) -> (Prelude.not b,v)) (False,v) $ do
-  let (b,u) = it
-  if b 
-    then Tagged @True u
-    else Tagged @False u
-
-data Read a = Read a
-
-type Reader a = Has (Read a)
-
+{-# INLINE ask #-}
 ask :: Reader a => a
-ask = let Read a = it in a
+ask = it
 
-reader :: Typeable a => a -> (Reader a => View) -> View
-reader a v = fold (\(_ :: Void) x -> x) (Read a) v
+{-# INLINE reader #-}
+reader :: a -> (Reader a => x) -> x
+reader = using
 
-env :: Typeable a => (a -> b) -> (Reader b => x) -> (Reader a => x)
-env f v = let Read a = it in using (Read (f a)) v
+{-# INLINE local #-}
+local :: (a -> b) -> (Reader b => x) -> (Reader a => x)
+local f x = reader (f ask) x
 
-data Entry a = Entry a
+type Writer a = (Monoid a, Effect a, Reader a)
 
-data Log a = Log a
-
-type Writer a = (Elm (Entry a),Has (Log a))
-
+{-# INLINE tell #-}
 tell :: Writer a => a -> IO ()
-tell = command . Entry
+tell = effect'
 
 listen :: Writer a => a
-listen = let Log a = it in a
+listen = it
 
+{-# INLINE writer #-}
 writer :: forall a. Typeable a => Monoid a => (Writer a => View) -> View
-writer = fold (\(Entry a) (Log l) -> Log (a <> l)) (Log @a mempty)
+writer = fold (<>) (mempty @a)
 
-translate :: Monoid a => (a -> b) -> (a -> b -> a) -> (Writer b => x) -> (Writer a => x)
-translate getter setter v = Pure.Elm.map (\(Entry b) -> Entry (setter mempty b)) (let Log a = it in using (Log (getter a)) v)
+{-# INLINE translate #-}
+translate :: (Monoid a, Monoid b) => (a -> b) -> (b -> a) -> (Writer a => x) -> (Writer b => x)
+translate f g x = using (g listen) (Pure.Elm.map f x)
 
-data Modify a = Modify (a -> a)
+type Modify a = Effect (a -> a)
+type State a = (Modify a, Reader a)
 
-data Get a = Get a
+{-# INLINE state #-}
+state :: Typeable a => (Modify a => a) -> (State a => View) -> View
+state = fold ($)
 
-type State a = (Elm (Modify a),Has (Get a))
+{-# INLINE state' #-}
+state' :: forall a. Typeable a => (Modify a => a) -> (State a => View) -> View
+state' a v = eager (\(WithDict a) -> state a v) (WithDict @(Modify a) a)
 
-modify :: State a => (a -> a) -> IO ()
-modify = command . Modify
+{-# INLINE stateIO #-}
+stateIO :: Typeable a => (Modify a => IO a) -> (State a => View) -> View
+stateIO io = stateIOWith (io >>= \a -> pure (a,\_ -> pure ()))
 
-put :: State a => a -> IO ()
-put = modify . const
+{-# INLINE stateIO' #-}
+stateIO' :: forall a. Typeable a => (Modify a => IO a) -> (State a => View) -> View
+stateIO' io v = eager (\(WithDict io) -> stateIO io v) (WithDict @(Modify a) io)
 
-get :: State a => a
-get = let Get a = it in a
+{-# INLINE stateIOWith #-}
+stateIOWith :: Typeable a => (Modify a => IO (a,a -> IO ())) -> (State a => View) -> View
+stateIOWith = foldM (\f a -> pure (f a)) 
 
-state :: forall a. Typeable a => a -> (State a => View) -> View
-state initial v = fold (\(Modify f) (Get a) -> Get (f a)) (Get initial) v
+{-# INLINE stateIOWith' #-}
+stateIOWith' :: forall a. Typeable a => (Modify a => IO (a,a -> IO ())) -> (State a => View) -> View
+stateIOWith' io v = eager (\(WithDict io) -> stateIOWith io v) (WithDict @(Modify a) io)
 
-zoom :: Typeable a => (a -> b) -> (a -> b -> a) -> (State b => x) -> (State a => x)
-zoom getter setter v = Pure.Elm.map (\(Modify f) -> Modify (\a -> setter a (f (getter a)))) (let Get a = it in using (Get (getter a)) v)
+{-# INLINE async #-}
+async :: View -> View
+async v = stateIO' (modify v >> pure Null) it
 
-data Throw a = Throw a
+data WithDict c a = WithDict (c => a)
 
-type Error a = Elm (Throw a)
+{-# INLINE modify #-}
+modify :: forall a. Modify a => (Reader a => a) -> IO ()
+modify f = effect' (\a -> using (a :: a) f)
 
-throw :: Error a => a -> IO ()
-throw = command . Throw
+{-# INLINE put #-}
+put :: Modify a => a -> IO ()
+put = modify
 
-catch :: forall a. Typeable a => (Error a => View) -> (a -> View) -> View
-catch action recovery = fold (\(Throw a) _ -> recovery a) action it
+{-# INLINE get #-}
+get :: Reader a => a
+get = it
 
+{-# INLINE zoom #-}
+zoom :: forall a b x. Typeable a => (a -> b) -> (b -> a -> a) -> (State b => x) -> (State a => x)
+zoom f g v = using (f get) (Pure.Elm.map (\h a -> g (h (f a)) a) v)
+
+type Error e = Effect e
+
+{-# INLINE throw #-}
+throw :: Error e => e -> IO ()
+throw = effect'
+
+{-# INLINE catch #-}
+catch :: forall e. Typeable e => (Error e => View) -> (e -> IO ()) -> View
+catch = stream 
+
+{-# INLINE pass #-}
 pass :: (a -> b) -> (Error a => x) -> (Error b => x)
-pass transform v = Pure.Elm.map (\(Throw a) -> Throw (transform a)) v
+pass = Pure.Elm.map
 
+{-# INLINE worker #-}
+worker :: IO () -> View -> View
+worker action = stateIO (forkIO action >>= \tid -> pure (tid,killThread))
+
+{-# INLINE every #-}
+every :: Time -> IO () -> IO ()
+every t io = forever (io >> delay t)
+
+{-# INLINE every' #-}
+every' :: Time -> IO () -> IO ()
+every' t io = forever (delay t >> io)
+
+data Supply a = Supply Time (IO a) (Reader a => View)
+instance Typeable a => Component (Supply a) where
+  data Model (Supply a) = Unstarted | Started ThreadId | Supplied ThreadId a
+
+  model = Unstarted
+
+  data Msg (Supply a) = Start | Stop | Receive | Update a
+
+  startup = [Start]
+  shutdown = [Stop]
+  receive = [Receive]
+
+  upon Start (Supply t io _) = \_ -> do
+    tid <- forkIO (forever (io >>= \a -> command (Update a) >> delay t))
+    pure (Started tid)
+
+  upon Stop _ = \case
+    Supplied tid _ -> killThread tid >> pure Unstarted
+    Started  tid   -> killThread tid >> pure Unstarted
+    x              -> pure x       
+
+  upon (Update a) _ = \case
+    Started  tid   -> pure (Supplied tid a)
+    Supplied tid _ -> pure (Supplied tid a)
+    x              -> pure x       
+
+  upon Receive (Supply t io _) = \case
+    Started tid -> do
+      killThread tid
+      tid <- forkIO (forever (io >>= \a -> command (Update a) >> delay t))
+      pure (Started tid)
+    Supplied tid a -> do
+      killThread tid
+      tid <- forkIO (forever (io >>= \a -> command (Update a) >> delay t))
+      pure (Supplied tid a)
+    _ -> do
+      tid <- forkIO (forever (io >>= \a -> command (Update a) >> delay t))
+      pure (Started tid)
+
+  upon _ _ = pure 
+
+  view (Supply _ _ v) (Supplied _ a) = using a v
+  view _ _ = Null
+
+{-# INLINE supply #-}
+supply :: Typeable a => Time -> IO a -> (Reader a => View) -> View
+supply t io v = run (Supply t io v)
